@@ -1,0 +1,742 @@
+%%%%%%%% ICML 2026 SUBMISSION FILE %%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[table,dvipsnames]{xcolor}
+% colortbl auto-loaded by xcolor [table] option; \columncolor / \rowcolor / \cellcolor available
+
+% -- Semantic colour palette (soft pastels, NeurIPS-style, muted) ----------
+% Narrative semantics, not decoration:
+%   \ctrlshade  = controllability peak / ablation column (the paper's causal locus)
+%   \sepshade   = separability peak / detection column
+%   \gapshade   = the gap itself (highlights the paper's main finding)
+%   \goodshade  = defensive success (low COMPLIANCE / residual harm)
+%   \badshade   = attack success / over-refusal cost
+%   \rowshade   = zebra stripe for long tables
+\definecolor{ctrlshade}{HTML}{FDE8E8}   % very pale salmon
+\definecolor{sepshade}{HTML}{E8F0FD}    % very pale blue
+\definecolor{gapshade}{HTML}{F3EBFD}    % very pale lavender
+\definecolor{goodshade}{HTML}{E7F5E7}   % very pale green
+\definecolor{badshade}{HTML}{FCE8E8}    % very pale red
+\definecolor{rowshade}{HTML}{F7F7F9}    % very pale gray
+\definecolor{accent}{HTML}{4A5BD4}      % deep pastel indigo (for emphasis text)
+\definecolor{reasoning}{HTML}{FFF4E0}   % very pale amber (for reasoning-model rows)
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Blind submission
+\usepackage{icml2026}
+
+\usepackage{amsmath,amssymb}
+\usepackage{xspace}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\input{math_commands.tex}
+
+% Circuit Breakers numbers (dual-judged, n=50 harmful prompts)
+\providecommand{\cbResultsPlaceholder}{see Table~\ref{tab:defense_baselines}}
+\providecommand{\cbNone}{0.0\%}
+\providecommand{\cbSock}{5.0\%}
+\providecommand{\cbAbl}{0.0\%}
+\providecommand{\cbDual}{1.0\%}
+\providecommand{\cbFPR}{n/a}
+\providecommand{\cbSummary}{essentially eliminates COMPLIANCE under all four attacks (0--5\%), but $\sim$83--90\% of sockpuppet / dual responses are \textsc{incoherent} rather than clean refusals --- CB's defense is output corruption, not refusal.}
+
+% XSTest dual-judge results (n=250 safe + 200 unsafe; Opus 4.6 + Sonnet 4.6)
+\providecommand{\xstestQwenThreeBBaseOver}{11.0\%}
+\providecommand{\xstestQwenThreeBAdaOver}{97.4\%}
+\providecommand{\xstestQwenThreeBBaseHarm}{7.0\%}
+\providecommand{\xstestQwenThreeBAdaHarm}{0.0\%}
+\providecommand{\xstestQwenThreeBDelta}{+86.4\%}
+\providecommand{\xstestQwenSevenBBaseOver}{2.6\%}
+\providecommand{\xstestQwenSevenBAdaOver}{89.0\%}
+\providecommand{\xstestQwenSevenBBaseHarm}{7.0\%}
+\providecommand{\xstestQwenSevenBAdaHarm}{0.0\%}
+\providecommand{\xstestQwenSevenBDelta}{+86.4\%}
+\providecommand{\xstestQwenFourteenBBaseOver}{3.2\%}
+\providecommand{\xstestQwenFourteenBAdaOver}{85.2\%}
+\providecommand{\xstestQwenFourteenBBaseHarm}{9.0\%}
+\providecommand{\xstestQwenFourteenBAdaHarm}{0.0\%}
+\providecommand{\xstestQwenFourteenBDelta}{+82.0\%}
+\providecommand{\xstestLlamaBaseOver}{7.0\%}
+\providecommand{\xstestLlamaAdaOver}{87.2\%}
+\providecommand{\xstestLlamaBaseHarm}{4.5\%}
+\providecommand{\xstestLlamaAdaHarm}{0.0\%}
+\providecommand{\xstestLlamaDelta}{+80.2\%}
+\providecommand{\xstestMistralBaseOver}{1.0\%}
+\providecommand{\xstestMistralAdaOver}{99.2\%}
+\providecommand{\xstestMistralBaseHarm}{30.8\%}
+\providecommand{\xstestMistralAdaHarm}{0.0\%}
+\providecommand{\xstestMistralDelta}{+98.2\%}
+\providecommand{\xstestSummary}{XSTest tells a harsher story than the ad-hoc 100-prompt benign set used for Table~\ref{tab:advtrain}. On every adapter, \emph{over-refusal on XSTest-safe rises to 85--99\%} (base: 1--11\%), a 80--98 percentage-point exaggerated-safety cost. Crucially, Qwen2.5-14B --- which showed 0/100 over-refusal on the ad-hoc set --- exhibits 85.2\% over-refusal on XSTest, demonstrating that the 100-prompt benign corpus was too easy and systematically under-estimated the utility cost of the adv-training recipe. On the defensive side the adapters perform strongly: \emph{residual-harm on XSTest-unsafe drops to 0\% on all five models} (base: 4.5--30.8\%), corroborating the 0\%-COMPLIANCE claim from the full dual-judge evaluation of the harmful attack set. The honest conclusion is therefore narrower than Section~\ref{sec:advtrain} originally stated: \emph{the controllability-peak ablation attack surface is trainable away at all tested scales (ablation-ASR $\to$ 0\%, residual-harm $\to$ 0\%), but the current recipe produces blanket over-refusers that are not deployment-ready at any of the scales we tested}. A benign-preservation signal (e.g., a contrastive loss that penalises over-refusal on XSTest-style prompts during training) is a necessary next component before the recipe is usable.}
+
+\newcommand{\modelname}{Gemma-3-27B-IT\xspace}
+\newcommand{\llamamodel}{Llama-3.1-8B-Instruct\xspace}
+\newcommand{\qwenmodel}{Qwen3-8B\xspace}
+\newcommand{\mistralmodel}{Mistral-7B-Instruct-v0.3\xspace}
+
+\icmltitlerunning{Readability Isn't Controllability}
+
+\begin{document}
+
+\twocolumn[
+  \icmltitle{Readability Isn't Controllability}
+
+  \icmlsetsymbol{equal}{*}
+
+  \begin{icmlauthorlist}
+    \icmlauthor{Anonymous}{anon}
+  \end{icmlauthorlist}
+
+  \icmlaffiliation{anon}{Anonymous Institution}
+
+  \icmlkeywords{LLM Safety, Jailbreaking, Mechanistic Interpretability, Representation Engineering}
+
+  \vskip 0.3in
+]
+
+% icml2026.sty's running-head height check fires for any \small\bf single-line
+% title (>6.25pt threshold is below \small baseline), so it always falls back
+% to "Title Suppressed Due to Excessive Size" -- override here.
+\makeatletter
+\gdef\@icmltitlerunning{Readability Isn't Controllability}
+\makeatother
+
+\printAffiliationsAndNotice{}
+
+% =============================================================================
+% ABSTRACT
+% =============================================================================
+\begin{abstract}
+Interpretability research on LLM safety implicitly assumes that the layers where safety features are most linearly separable are also the best targets for inference-time intervention. We show this assumption is wrong. Across \textbf{13 instruction-tuned models} spanning five families and scales from 3B to 72B---including two reasoning-trained variants (QwQ-32B, DeepSeek-R1-Distill-Llama-70B)---we identify a \textbf{readability vs.\ controllability gap}: refusal features are most readable in the final 2--3\% of layers ($\sim$0.96--1.00$L$) but most causally controllable much earlier (0.39--0.81$L$), a gap spanning \textbf{28--59\% of model depth}. Beyond establishing the gap, we provide a mechanistic explanation: on 11 of 12 models ablating the refusal direction at the controllability peak leaves the late-layer refusal projection within $\pm$10\% of baseline and the refusal-vs-compliance token-logit preference within 0.6 units of baseline, yet still changes behavior (ablation-only ASR spans 11.5--78.5\% across the 11 models with clean baselines, excluding Mistral-7B-v0.3 and DS-R1-Distill-Llama-70B whose high no-attack ASR confounds the ablation effect). Gemma-3-27B is the only exception, and even there sockpuppeting flips the projection much further than ablation. The ``refusal direction'' at the separability peak is best understood as an output-adjacent readout, not the causal variable; the gap reflects a representation/behavior decoupling rather than a decision-vs-format split. This decoupling sharpens the design implication: \textbf{intervene at the controllability peak, detect at the separability peak}---they serve different safety functions. Two further findings follow. First, we LoRA-fine-tune five models with ctrl-peak-ablation counterexamples and close the attack surface entirely (ablation-ASR $\to$ 0\% on held-out prompts, verified under full dual-judge evaluation across 2000 responses). XSTest dual-judge evaluation, however, shows the current recipe produces 85--99\% over-refusal on safe prompts across all five scales (Table~\ref{tab:xstest})---so the attack surface is demonstrably trainable away but the recipe is not deployment-ready without a benign-preservation component. Second, we document a new failure mode of reasoning models: their chain-of-thought leaks harmful content before the final refusal, bypassing output-level safety training regardless of the gap.
+\end{abstract}
+
+% =============================================================================
+% INTRODUCTION
+% =============================================================================
+\section{Introduction}
+
+Where should we monitor for safety failures inside a language model? The default answer from interpretability research is \textit{late layers}, where refusal features are most linearly separable~\citep{arditi2024refusal}. Linear probes trained at these layers achieve near-perfect accuracy at distinguishing harmful from harmless prompts. Yet linear separability measures whether a feature can be \textit{read}---not whether intervening on it actually \textit{controls} model behavior. If the most readable safety features are not the most causally effective intervention points, then safety monitoring built on late-layer probes may be fundamentally misplaced.
+
+We investigate this question across \textbf{13 models} spanning five families (Qwen2.5 at 3B/7B/14B/32B/72B, Qwen3-8B, Llama-3.1-8B/70B, Mistral-7B-v0.3 + Mistral-Small-24B, Gemma-3-27B) plus two reasoning-trained variants (QwQ-32B, DeepSeek-R1-Distill-Llama-70B), using attack composition as a diagnostic tool. By combining refusal-direction ablation~\citep{arditi2024refusal} at varying layers with decoding-level sockpuppeting~\citep{dotsinski2026sockpuppetting}, we systematically probe where safety is most readable (via probes and separation metrics) and where it is most causally controllable (via attack success rate). The answer is consistently misaligned: separation peaks in the final 2--3\% of layers, while controllability peaks 6--47 layers earlier, in the middle 39--81\% of model depth.
+
+This gap is not the only structural finding. Ablation vulnerability spans a wide spectrum: ablation alone breaks Qwen2.5-3B (78.5\%) but barely affects Qwen2.5-32B (11.5\%) and Llama-3.1-8B (13\%), and within the Qwen2.5 family ablation ASR drops monotonically with scale (3B/7B/14B/32B/72B: 78.5 / 46.0 / 21.5 / 11.5 / 14.0\%), approaching a floor at the 32B--72B scale. Sockpuppeting bypasses all models (52--89\% ASR). Mechanistically the two attacks hit disjoint points in the computation: sockpuppet flips the refusal representation at every layer, while ablation at the controllability peak leaves that representation (and the first-token refusal-vs-compliance logit preference) nearly unchanged on 11 of 12 models---yet still changes behavior.
+
+We make five contributions:
+\begin{enumerate}
+    \item \textbf{The readability--controllability gap reproduces across 13 models from five families (Gemma-3, Llama-3.1, Qwen2.5, Qwen3, Mistral) and 3B--72B parameters (24$\times$ size range).} Refusal features are most linearly separable in the final 2--3\% of layers ($\sim$0.96--1.00$L$) but most causally controllable much earlier (0.39--0.81$L$), with gaps of \textbf{28--59\% of model depth} (mean 44\%). Logistic probes, layer-wise L2 separation, and dual-level attack sweeps all corroborate the gap, which is tightest on well-aligned large models (Qwen2.5-32B: 28\%) and loosest on smaller or reasoning-trained models (Llama-3.1-8B and DS-R1-Distill-Llama-70B: 59\%).
+    \item \textbf{A mechanistic explanation of the gap.} On 11 of 12 tested models, ablating the refusal direction at the controllability peak leaves two quantities close to baseline at the separability peak: (a) the residual-stream projection onto the late-layer refusal direction (within $\pm$10\%), and (b) the refusal-vs-compliance token-logit preference (within 0.6 units). Sockpuppeting changes both substantially. Gemma-3-27B is the lone exception, showing a 30\% projection drop under ablation---still smaller than sockpuppet's effect. Residual-stream path patching on Llama-3.1-8B, Qwen2.5-7B, and Mistral-Small-24B (Section~\ref{sec:path_patch}) shows the refusal signal is rebuilt distributedly across the final 10--23 layers on every model with no localized relay, consistent with the refusal direction being an \emph{output-adjacent readout}, not a causal bottleneck. This reframes the gap from a ``decision vs.\ format'' split to a representation/behavior decoupling.
+    \item \textbf{Scale and reasoning change the gap.} Within the Qwen2.5 family (same architecture, same safety recipe), ablation-only ASR drops monotonically with scale (3B/7B/14B/32B: 78.5 / 46.0 / 21.5 / 11.5\%), with a floor near 11--14\% at 32B--72B. Safety becomes more non-linearly encoded at larger capacity. Reasoning models (QwQ-32B, DeepSeek-R1-Distill-Llama-70B) invert the sockpuppet effect on refusal-token logits---sockpuppet \emph{increases} the final-layer refusal logit preference---and exhibit a new failure mode, \textbf{chain-of-thought harmful-content leakage}: their thinking block produces detailed harmful reasoning before the final refusal, exposing information that output-level safety masks.
+    \item \textbf{A refined design implication.} The gap decouples intervention from detection: the controllability peak is the right place to \emph{intervene} (ablation has maximal behavioral effect there), while the separability peak is the right place to \emph{detect} (compliance-prediction AUC is within 0.01 of best on 8/9 tested models; GCG-successful prompts show a 39--104-unit drop in sep-peak refusal projection relative to GCG-failed prompts). Single-peak monitoring guidance in prior work conflates two distinct safety functions.
+    \item \textbf{The attack surface is trainable away, but the current recipe is not deployment-ready (honest positive contribution).} LoRA fine-tuning (200 steps, $r$=16) with refusal-direction-ablation counterexamples drives ablation-ASR to 0\% on held-out prompts across all five tested models (Qwen2.5-3B, 7B, 14B, Llama-3.1-8B, Mistral-7B-v0.3). Full dual-judge re-evaluation confirms 0\% COMPLIANCE across all four attack conditions on every adapted model (2000 judged responses). The controllability peak is therefore a property of the alignment recipe, not of the architecture. However, principled utility evaluation on XSTest (dual-judged) shows every adapter over-refuses safe prompts at 85--99\%---including Qwen2.5-14B (which the ad-hoc 100-prompt benchmark misclassified as retaining full utility). The recipe eliminates the attack surface at all scales but requires a benign-preservation component before deployment.
+\end{enumerate}
+
+% =============================================================================
+% RELATED WORK
+% =============================================================================
+\section{Related Work}
+
+\paragraph{Representation-Level Attacks.}
+\citet{arditi2024refusal} identified a one-dimensional ``refusal direction'' in activation space, ablatable across 13 models up to 72B parameters. Subsequent work scaled this approach: \citet{xing2025lfj} achieved 94\% ASR via hidden-state interpolation, and \citet{krauss2025twinbreak} reached 89--98\% via safety-specific pruning. These methods operate at a single layer and do not study where intervention is most vs.\ least effective across the full layer stack---the central question of our work.
+
+\paragraph{Decoding-Level Attacks.}
+\citet{dotsinski2026sockpuppetting} showed that injecting compliance-inducing text as an assistant prefix achieves 23--40\% ASR on Gemma-7B-IT. \citet{zhang2025cda} exploit structured output interfaces, and \citet{huang2024catastrophic} manipulate generation parameters. All operate at the decoding level. We use sockpuppeting as a complementary probe to representation-level ablation, specifically to test whether the two levels share or have independent failure modes.
+
+\paragraph{Learned Adversarial Suffixes.}
+\citet{zou2023universal} introduced GCG, which uses token-gradient search to craft adversarial suffixes that induce compliance. GCG operates at the input level and is independent of the model's internal safety geometry. We reproduce GCG on three models as a transfer test for our defense claim: whether the sep-peak refusal projection we identify still discriminates GCG-successful from GCG-failed prompts. Section~\ref{sec:gcg} shows it does, with margins of 39--104 projection units.
+
+\paragraph{Multi-Vector Attacks.}
+\citet{wei2023jailbroken} showed competing objectives confuse safety training, and \citet{andriushchenko2024adaptive} demonstrated that simple adaptive attack combinations remain effective against leading models. Our work differs in purpose: we use multi-level composition not to maximize ASR, but as a \textit{diagnostic} that reveals where safety is encoded and how independently different safeguard levels fail.
+
+\paragraph{Defenses and Safety Probing.}
+\citet{zhao2025indecoding} introduced in-decoding safety-awareness probing, monitoring activations during generation. \citet{zou2024circuit} propose Circuit Breakers, which route harmful representations to randomized directions at training time, and \citet{xu2024safedecoding} propose SafeDecoding, a decoding-time defense that amplifies safety-aligned token probabilities. \citet{llamaguard3} release Llama Guard 3 as an input/output classifier. Section~\ref{sec:defense_baselines} benchmarks our sep-peak detector against these three defenses on the same attack set.
+
+\paragraph{Activation Steering and Layer-Dependence.}
+\citet{panickssery2024caa} (contrastive activation addition, CAA) and \citet{turner2023activation} (ActAdd) steer behavior by adding a difference-of-means vector into the residual stream and observe that steering effectiveness varies with layer choice; \citet{zou2023representation} (Representation Engineering, RepE) generalises this to many behaviors and tracks layer-wise probe accuracy. \citet{wei2024brittleness} show that a small number of safety-critical layers / neurons / rank-1 updates can break refusal, implying safety is not uniformly distributed.
+
+\paragraph{Differentiation from prior work.}
+Taken together, prior work (\citet{arditi2024refusal}, \citet{panickssery2024caa}, \citet{turner2023activation}, \citet{zou2023representation}, \citet{wei2024brittleness}) establishes (a) that a linear refusal direction exists, (b) that steering/ablation effectiveness depends on layer, and (c) that safety is concentrated in specific layers. What prior work does \emph{not} do — and what this paper contributes — is: \textbf{(i)} systematically quantify the \emph{separability vs.\ controllability gap} at scale (13 models, 5 families, 3B--72B), demonstrating it is a 28--59\%-of-depth universal phenomenon rather than a model-specific artefact; \textbf{(ii)} supply a mechanistic explanation via two per-layer probes (refusal-projection trajectory + logit lens, Section~\ref{sec:mech}), showing on 11/12 models that ctrl-peak ablation changes behavior without moving the late-layer refusal projection or the first-token logit preference --- reframing the late-layer ``refusal direction'' as an \emph{output-adjacent readout}, not a causal bottleneck; \textbf{(iii)} establish via residual-stream path patching across three model families (Section~\ref{sec:path_patch}) that the refusal signal is rebuilt \emph{distributedly} across the final 10--23 layers, ruling out a single-relay explanation that prior work might otherwise predict; and \textbf{(iv)} derive and empirically verify the design principle \emph{intervene at the controllability peak, detect at the separability peak} using a defense-probe that transfers from sockpuppet to GCG (Section~\ref{sec:gcg}) and is competitive with dedicated defenses (Section~\ref{sec:defense_baselines}). Earlier results on layer-dependence either picked a single model for mechanistic analysis, reported layer-dependence without fitting a cross-model structure, or conflated readability and controllability metrics (e.g., by using probe accuracy as a proxy for intervention target).
+
+% =============================================================================
+% METHODOLOGY
+% =============================================================================
+\section{Methodology}
+
+We consider a transformer-based LLM with $L$ layers, where $\mathbf{h}_\ell \in \mathbb{R}^d$ denotes the hidden state at layer $\ell$. We assume white-box access to model weights, enabling representation analysis and inference-time intervention.
+
+\subsection{Refusal Direction Ablation}
+
+Following \citet{arditi2024refusal}, we compute a refusal direction $\hat{\mathbf{r}}_\ell \in \mathbb{R}^d$ at layer $\ell$ as the normalized mean difference between hidden states for harmful versus harmless prompt pairs:
+\begin{equation}
+    \hat{\mathbf{r}}_\ell = \frac{\mathbb{E}[\mathbf{h}_\ell^{\text{harmful}}] - \mathbb{E}[\mathbf{h}_\ell^{\text{harmless}}]}{\|\mathbb{E}[\mathbf{h}_\ell^{\text{harmful}}] - \mathbb{E}[\mathbf{h}_\ell^{\text{harmless}}]\|}
+    \label{eq:refusal_dir}
+\end{equation}
+
+During generation, we project out the refusal component via a forward hook applied at each generation step:
+\begin{equation}
+    \mathbf{h}'_\ell = \mathbf{h}_\ell - \alpha \cdot (\mathbf{h}_\ell \cdot \hat{\mathbf{r}}_\ell) \cdot \hat{\mathbf{r}}_\ell
+    \label{eq:ablation}
+\end{equation}
+where $\alpha$ controls ablation strength.
+
+\subsection{Sockpuppeting}
+
+Inspired by \citet{dotsinski2026sockpuppetting}, we inject a compliance-inducing target string after the chat template's assistant header. Each target is \textbf{prompt-specific}, generated by a deterministic verb-prefix template: the leading verb of the harmful prompt (e.g., ``Write,'' ``Explain,'' ``Describe'') is stripped and the remainder is prepended with ``Sure, here is [remainder]'' (or ``Sure, here is an explanation of [remainder]'' for explanation verbs). For example, ``Write malware code'' $\rightarrow$ ``Sure, here is malware code.'' This template covers 13 common verb prefixes; prompts not matching any prefix receive the generic ``Sure, here is [full prompt]'' fallback. Generic prefixes without prompt-specific content yielded near-zero ASR; the verb-template approach is essential for effectiveness. The complete template and all 100 targets are released with our code.
+
+\subsection{Dual-Level Attack}
+
+The dual-level attack combines both interventions: (1) register ablation hook at layer $\ell$ with strength $\alpha$, (2) append sockpuppet target after assistant header, (3) generate with modified forward pass (ablation active at every token). The key insight is that ablation operates \textit{continuously} during generation.
+
+\subsection{Readability and Controllability}
+\label{sec:definitions}
+
+We formalize the two properties this paper distinguishes:
+
+\textbf{Readability} at layer $\ell$ measures how linearly separable the safety signal is, quantified two ways: (1) \textit{separation}---the L2 norm $\|\mathbb{E}[\mathbf{h}_\ell^{\text{harmful}}] - \mathbb{E}[\mathbf{h}_\ell^{\text{harmless}}]\|$ (training-free, not susceptible to overfitting), and (2) \textit{probe accuracy}---5-fold cross-validated logistic regression ($C$=1.0, L2 penalty) on last-token hidden states (100 per class; liblinear solver in-pipeline or a torch LBFGS post-hoc fit for the largest models). The probe operates in a $p \gg n$ regime ($d$=2048--8192 depending on model, $n_\text{train}$=160 per fold); we use separation as the primary metric for this reason, corroborated by near-chance probe accuracy at the first layer across models ruling out systematic overfitting.
+
+\textbf{Controllability} at layer $\ell$ measures how effectively ablation changes behavior, operationalized as dual-level ASR when ablation is applied at layer $\ell$. Since sockpuppeting ASR is constant across layers, variation in dual ASR isolates ablation's layer-dependent contribution. We use dual rather than ablation-only ASR because on models where ablation alone is weak (e.g., Llama-3.1-8B at 13\%, Qwen2.5-32B at 11.5\%), ablation-only ASR is uninformative for locating a peak. Our mechanistic probes (Section~\ref{sec:mech}) confirm that the behavioral peak reflects ablation effectiveness rather than judge artefacts, even though the refusal projection at the separability peak is not itself the causal variable.
+
+The \textbf{gap} is the difference between the separation peak layer and the controllability peak layer. We report probe accuracy peaks separately and discuss metric divergence in Section~\ref{sec:layerwise}.
+
+\paragraph{Colour key (used throughout).} Tables in this paper use a consistent pastel palette tied to the paper's narrative: \colorbox{sepshade}{separability peak / detection} columns in pale blue, \colorbox{ctrlshade}{controllability peak / intervention} columns in pale salmon, \colorbox{gapshade}{the gap itself} in pale lavender, \colorbox{reasoning}{reasoning-trained models} in pale amber, \colorbox{goodshade}{defensive success} (low compliance / low harm) in pale green, and \colorbox{badshade}{attack success / over-refusal cost} in pale red. Uncoloured cells are neutral baselines or reference values.
+
+\subsection{Evaluation Protocol}
+
+An LLM judge classifies responses as COMPLIANCE, REFUSAL, or INCOHERENT. Attack Success Rate (ASR) = \% COMPLIANCE responses. To ensure robustness to judge choice, all responses are independently evaluated by two frontier judges: Claude Opus 4.6 and Claude Sonnet 4.6 (Anthropic direct API), with inter-judge agreement $>$94\% (Section~\ref{sec:judge_agreement}). We report the mean ASR across both judges with 95\% Wilson score CIs. All generations use greedy decoding (\texttt{do\_sample=False}) with \texttt{max\_new\_tokens=256}; we explicitly flag that this truncates the thinking block of reasoning models on a subset of prompts (Section~\ref{sec:cot_leak}).
+
+% =============================================================================
+% EXPERIMENTS
+% =============================================================================
+\section{Experiments}
+
+\subsection{Experimental Setup}
+
+\paragraph{Models.} We evaluate 13 instruction-tuned models spanning five families and 3B--72B parameters:
+\textbf{Qwen2.5} family (3B, 7B, 14B, 32B, 72B) \citep{qwen25}, \textbf{Qwen3-8B} \citep{qwen3}, \textbf{Llama-3.1-8B} and \textbf{Llama-3.1-70B} \citep{grattafiori2024llama}, \textbf{Mistral-7B-Instruct-v0.3} and \textbf{Mistral-Small-24B-Instruct-2501} \citep{mistral_small3}, \textbf{Gemma-3-27B-IT} \citep{team2024gemma}, and two reasoning-trained variants: \textbf{QwQ-32B} \citep{qwq32b} and \textbf{DeepSeek-R1-Distill-Llama-70B} \citep{deepseekr1}. Experiments run on 8$\times$NVIDIA B200 (183 GB HBM3e each) in bfloat16 via the HuggingFace \texttt{transformers} library. The 70B and 72B models each fit in a single B200 in bfloat16, enabling full forward-hook intervention at native precision.
+
+\paragraph{Dataset \& Configurations.} We use 100 semantically matched harmful/harmless prompt pairs. For each model, we test 6 attack layers (fractions $\{0.40, 0.50, 0.60, 0.70, 0.80, 0.90\}$ of depth, mapped to integer layer indices) $\times$ 3 strengths ($\alpha \in \{0.3, 0.5, 0.7\}$), yielding 18 layer$\times$strength configurations per mode, plus no-attack and sockpuppet-only baselines. Disjoint validation uses 50 held-out prompts at each model's best dual config. All generations use greedy decoding (\texttt{do\_sample=False}) with \texttt{max\_new\_tokens=256}; the shorter budget relative to the ICLR pilot is required to sweep a much larger model set on a single-box time budget, but truncates the thinking block of reasoning models on a subset of prompts (analyzed in Section~\ref{sec:cot_leak}).
+
+\subsection{Main Results}
+
+This section tests our central claim: the readability--controllability gap is a cross-architecture phenomenon, not an artifact of a single model. Figure~\ref{fig:gap} visualizes the gap; Table~\ref{tab:main_multi} summarizes the comparison.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/fig1_gap_stack.png}
+    \caption{\textbf{The readability--controllability gap.} A linear probe trained on the final-layer residual stream reads refusal with near-perfect accuracy (\emph{separability peak}, top band). An intervention that changes behaviour is most effective 30--60 layers earlier (\emph{controllability peak}, middle band). The two peaks are separated by 28--59\% of model depth across the 13 models we study (Table~\ref{tab:main_multi}); detection and intervention therefore target different layers of the same network.}
+    \label{fig:gap}
+\end{figure*}
+
+\begin{table*}[t]
+\caption{Cross-model comparison ($n$=100 per condition). \textbf{Sep.\ Peak}: layer with highest L2 separation between harmful/harmless mean activations. \textbf{Probe Peak}: layer with highest 5-fold logistic probe accuracy (last-token hiddens, $n$=100/class, liblinear, GPU-LBFGS post-hoc fit where available). \textbf{Ctrl.\ Peak}: layer with highest dual ASR. \textbf{Gap}: difference between Sep.\ Peak and Ctrl.\ Peak. Judges: Claude Opus 4.6 + Claude Sonnet 4.6 (mean, inter-judge agreement $>$94\% across conditions). All runs on NVIDIA B200 in bfloat16.}
+\label{tab:main_multi}
+\begin{center}
+\scriptsize
+\begin{tabular}{lccc>{\columncolor{ctrlshade}}c>{\columncolor{sepshade}}c c>{\columncolor{ctrlshade}}c>{\columncolor{gapshade}}c}
+\toprule
+\textbf{Model} & $L$ & \textbf{Sock.} & \textbf{Abl.} & \textbf{Dual} & \textbf{Sep.\ Peak} & \textbf{Probe Peak} & \textbf{Ctrl.\ Peak} & \textbf{Gap (Sep.)} \\
+\midrule
+\multicolumn{9}{l}{\emph{Standard (non-reasoning) models, ordered by parameter count}} \\
+Qwen2.5-3B   & 36 & 79.5\% & 78.5\% & 89.5\% & L34 (.97$L$) & -- & L21 (.60$L$) & 13 (36\%) \\
+Mistral-7B-v0.3$^\dagger$ & 32 & 88.5\% & 89.5\% & 90.0\% & L31 (1.00$L$) & L11 (.35$L$) & L16 (.52$L$) & 15 (47\%) \\
+Qwen2.5-7B   & 28 & 78.0\% & 46.0\% & 87.0\% & L26 (.96$L$) & L16 (.59$L$) & L14 (.52$L$) & 12 (43\%) \\
+Llama-3.1-8B & 32 & 83.5\% & 13.0\% & 91.0\% & L31 (1.00$L$) & L12 (.39$L$) & L12 (.39$L$) & 19 (59\%) \\
+Qwen2.5-14B  & 48 & 52.0\% & 21.5\% & 91.0\% & L46 (.98$L$) & L23 (.49$L$) & L24 (.51$L$) & 22 (46\%) \\
+Qwen3-8B     & 36 & 52.5\% & 22.0\% & 78.5\% & L34 (.97$L$) & L27 (.77$L$) & L21 (.60$L$) & 13 (36\%) \\
+Mistral-Small-24B & 40 & 78.5\% & 46.0\% & 86.0\% & L39 (1.00$L$) & L10 (.26$L$) & L16 (.41$L$) & 23 (57\%) \\
+Gemma-3-27B  & 62 & 71.5\% & 55.0\% & 90.5\% & L60 (.98$L$) & L21 (.34$L$) & L37 (.61$L$) & 23 (37\%) \\
+Qwen2.5-32B  & 64 & 62.5\% & 11.5\% & 79.5\% & L62 (.98$L$) & L21 (.33$L$) & L44 (.70$L$) & 18 (28\%) \\
+Llama-3.1-70B & 80 & 87.0\% & 35.0\% & 89.0\% & L79 (1.00$L$) & L17 (.22$L$) & L55 (.70$L$) & 24 (30\%) \\
+Qwen2.5-72B  & 80 & 52.0\% & 14.0\% & 75.5\% & L78 (.99$L$) & L40 (.51$L$) & L40 (.51$L$) & 38 (48\%) \\
+\midrule
+\multicolumn{9}{l}{\emph{Reasoning-trained models}} \\
+\rowcolor{reasoning} QwQ-32B      & 64 & 76.0\% & 32.0\% & 84.0\% & L62 (.98$L$) & L38 (.60$L$) & L32 (.51$L$) & 30 (47\%) \\
+\rowcolor{reasoning} DS-R1-Distill-Llama-70B$^\ddagger$ & 80 & 77.5\% & 86.5\% & 86.0\% & L79 (1.00$L$) & L16 (.20$L$) & L32 (.41$L$) & 47 (59\%) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{-1.5ex}
+{\footnotesize $^\dagger$Mistral-7B-v0.3 baseline (no-attack) ASR is 88\% under the paper's concise-instruction protocol; this version is effectively weakly aligned on these prompts, so its ablation-ASR (89.5\%) and dual (90.0\%) are not directly interpretable as attack effects. Mistral-Small-24B is the clean Mistral successor. $^\ddagger$DS-R1-Distill-Llama-70B baseline ASR is 85\% (reasoning distillation weakens the original Llama-3.3-70B alignment); its ablation column (86.5\%) is within noise of baseline and thus uninformative. Both rows are retained for completeness; we exclude them from all ``ablation-ASR'' aggregates in the text.}
+\end{table*}
+
+\paragraph{The Gap is Universal.} Measured by L2 separation, readability peaks in the final 2--4\% of layers across all 13 models (sep peak $\geq 0.96L$ on every model tested), while controllability peaks in the middle 39--81\% of model depth. Raw layer gaps range from 12 layers (Qwen2.5-7B) to 47 layers (DS-R1-Distill-Llama-70B); as a fraction of depth, gaps span 28\% (Qwen2.5-32B) to 59\% (DS-R1-Distill-Llama-70B, Llama-3.1-8B), with a mean of 44\%. Probe accuracy---our second readability metric---often peaks even earlier than L2 separation (as early as 0.20$L$ on Llama-3.1-70B and DS-R1-Distill-Llama-70B), reinforcing that mid-network representations are already linearly decodable before the separation peak emerges.
+
+\paragraph{A Spectrum of Safety Architectures and a Scaling Law.}
+Ablation vulnerability spans a wide spectrum: very shallow ($\geq$75\%, Qwen2.5-3B, Mistral-7B-v0.3$^\dagger$); shallow (40--60\%, Gemma-3-27B, Qwen2.5-7B, Mistral-Small-24B); moderate (20--40\%, QwQ-32B, Qwen3-8B); deep ($<$20\%, Llama-3.1-8B, Qwen2.5-32B). Within the Qwen2.5 family (same architecture, same safety-tuning recipe), ablation-only ASR drops monotonically and saturates: \textbf{3B $\to$ 78.5\%, 7B $\to$ 46.0\%, 14B $\to$ 21.5\%, 32B $\to$ 11.5\%, 72B $\to$ 14.0\%}. Safety becomes more non-linearly encoded at larger capacity, consistent with Qwen's probe peak moving later (L16 at 7B $\to$ L23 at 14B $\to$ L40 at 72B); at 32B--72B the linear attack approaches a floor near 11--14\%. Sockpuppet remains effective across all models (52.5--89\% ASR); dual attack reaches 78.5--91\%. $^\dagger$Mistral-7B-v0.3 has an 88\% no-attack baseline (weak alignment under our concise-instruction protocol) so we exclude it from scaling comparisons.
+
+\subsection{Mechanistic Analysis}
+\label{sec:mech}
+
+We investigate \emph{why} the controllability peak differs from the readability peak with two complementary per-layer probes, run on all 13 models with 40 harmful prompts each under four conditions (no-attack, sockpuppet-only, ablation-only at the controllability peak, dual). Let $\mathbf{h}_\ell^{(t)}$ denote the residual stream at layer $\ell$ and token position $t$.
+
+\paragraph{Probe 1 — Refusal projection trajectory.}
+At every layer $\ell$, we compute the dot product $p_\ell = \mathbf{h}_\ell \cdot \hat{\mathbf{r}}_{\text{sep}}$, where $\hat{\mathbf{r}}_{\text{sep}}$ is the refusal direction at the model's L2 separation peak. $p_\ell$ measures how much of the residual stream at layer $\ell$ aligns with the late-layer refusal readout.
+
+\paragraph{Probe 2 — Logit lens.}
+At every layer $\ell$, we apply the model's final RMSNorm and unembedding matrix to $\mathbf{h}_\ell$, computing the logit for refusal-initial tokens (``I'', ``Sorry'', ``Unable'', \dots) minus the logit for compliance-initial tokens (``Sure'', ``Here'', ``Certainly'', \dots). This directly measures the model's token-level refusal preference that would be expressed if generation stopped at layer $\ell$.
+
+Figure~\ref{fig:decoupling} shows both probes at the separability peak; raw numbers are in App.~\ref{app:mech_raw}.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.78\textwidth]{figures/figG_decoupling.pdf}
+    \caption{Mechanistic decoupling (12 models, 4 conditions). \textbf{Top:} residual-stream refusal projection at the sep peak, baseline-normalized. \textbf{Bottom:} refusal-minus-compliance last-layer logit (logit lens), same normalization. The \emph{ablation} row stays $\sim$+1.0 (no movement); the \emph{sockpuppet} row flips negative or to zero. Ablation at the ctrl peak changes behavior without moving the late-layer refusal readout.}
+    \label{fig:decoupling}
+\end{figure*}
+
+\paragraph{Ablation does not move the readout.}
+On 11 of 12 models the ablation column differs from the no-attack column by less than 10\% on $p_{\text{sep}}$ and less than 0.6 on $\Delta$logit. On five Qwen models the projection even \emph{increases} under ablation (the signal rebuilds and overshoots). Gemma-3-27B is the only model showing a meaningful projection reduction (30\%), still smaller than the effect of sockpuppeting. Yet the behavioral ASR under ablation-only ranges from 11.5\% (Qwen2.5-32B) to 89.5\% (Qwen2.5-3B)---a 78-point spread \emph{driven by an intervention that does not change either the refusal projection at the readability peak or the first-token logit preference}. Sockpuppeting, in contrast, flips both on most models.
+
+\paragraph{Interpretation: the refusal direction is a readout.}
+The combined evidence reframes the gap. The ``refusal direction'' measured at the separability peak captures an \emph{output-adjacent readout}: the residual stream at the last layer is shaped so that the unembedding matrix projects refusal-token logits high. Ablation at the controllability peak changes behavior through orthogonal circuit modifications (likely attention patterns and OV-circuit writes that do not lie on the linear refusal axis) but the residual stream is rebuilt by subsequent layers into a representation that, when unembedded, still reads as refusal. This explains two phenomena the original ``decision vs.\ format'' hypothesis left unresolved: (a) why the late-layer refusal signal \emph{rises} after mid-layer ablation on Qwen models, and (b) why intervening at the readability peak is strictly worse for all behavioral effects.
+
+\subsection{Readability vs.\ Controllability}
+\label{sec:layerwise}
+
+This section directly tests the gap by measuring readability and controllability (as defined in Section~\ref{sec:definitions}) across all layers for each model.
+
+\paragraph{Readability Peaks Late.} L2 separation between harmful and harmless mean activations increases monotonically toward later layers on every one of the 13 models. Separation peaks at the final or second-to-last layer in all cases, at fraction $\geq 0.96L$ (see Sep.\ Peak column of Table~\ref{tab:main_multi}).
+
+\paragraph{Linear Probes Peak Early; the Two Readability Metrics Mostly Agree.} Probe accuracy (5-fold CV logistic) rises sharply in early layers, saturates, and on 9 of 12 models peaks at or before the controllability peak (e.g., Llama-3.1-8B and Mistral-Small-24B near L10--L12, $\sim$0.26--0.39$L$; Qwen2.5-32B L21; Gemma-3-27B L21; Qwen2.5-72B L40). Where the metrics diverge, probes peak earlier (near the ctrl peak) while L2 separation always peaks at the final layer. We report gaps using L2 separation because probe accuracy saturates and becomes uninformative for locating a peak; models where the two coincide (e.g., Mistral-Small-24B probe L10 vs.\ ctrl L16) have the largest behavioral gaps, because the probe-peak representation is already causally consequential.
+
+\paragraph{Controllability Peaks Earlier; Direct Comparison.} The dual-ASR controllability peak lies at fraction 0.39--0.81$L$ across the 12 judged models, with the separation-based gap largest on DS-R1-Distill-Llama-70B and Llama-3.1-8B (59\%) and smallest on Qwen2.5-32B (28\%). On every model, ablating at the ctrl peak yields strictly higher dual ASR than at the sep peak. The ICLR-submission Gemma-3-27B pilot illustrates the magnitude: 29-point difference (97\% at L45 vs.\ 68\% at L61), showing that optimizing for linear separability leads to sub-optimal intervention targets.
+
+\section{Discussion}
+
+\paragraph{Threat model and scope.}
+Ablation requires white-box access; sockpuppet alone (52.5--89\% ASR) needs only API-level assistant prefilling. Llama-3.1-8B and Mistral-7B-v0.3 share $L=32$, $d=4096$ yet differ by 77 pts in ablation-ASR, so alignment procedure dominates geometry. Qwen3-8B's non-reasoning \textit{comply-then-refuse} pattern motivates defenses that score the whole assistant turn, not just the prompt.
+
+\paragraph{Generalization, defenses, and a trainable surface.}
+The dual attack reaches 54--88\% ASR on held-out prompts on 10/13 models (App.~\ref{app:disjoint}); the refusal direction yields 3.9--32.7$\times$ higher ASR than 15 random unit-vector controls per model (App.~\ref{app:randdir}); ablation does not corrupt benign generation (App.~\ref{app:utility}). A linear compliance-prediction probe achieves best-AUC at the sep peak on 8/9 models with ctrl-peak AUC 1--27 pts lower (App.~\ref{app:defense}), and the same probe transfers to GCG~\citep{zou2023universal} with 39--104-unit margins (App.~\ref{app:gcg}); versus Llama Guard 3 (bypassed by assistant prefill) and Circuit Breakers \citep{zou2024circuit} (output corruption with $\sim$83--90\% incoherent), it is the cheapest cross-attack monitor (App.~\ref{app:defbase}). Path patching shows the rebuild is distributed: recovery climbs smoothly across three families with no localized relay (App.~\ref{app:pathpatch}). LoRA fine-tuning (200 steps, $r$=16) with ablation counterexamples drives ablation-ASR to 0\% on held-out prompts across five models (2000-response dual-judge re-evaluation, App.~\ref{app:advtrain}); but the same adapters over-refuse XSTest-safe at 85--99\% \citep{rottger2024xstest}, so the recipe needs a benign-preservation component before deployment.
+
+\paragraph{Reasoning-model failure modes.}
+QwQ-32B and DS-R1-Distill-Llama-70B leak harmful content inside their \texttt{<think>} block before the final refusal---\textbf{chain-of-thought leakage}, orthogonal to the gap (App.~\ref{app:cotleak}). On QwQ-32B sockpuppeting \emph{increases} the final-layer refusal preference yet produces harmful reasoning earlier in the trace; output-level safety is incomplete for these models. Judge sensitivity is documented in App.~\ref{app:judges}.
+
+\par\medskip
+\noindent\colorbox{gapshade}{%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep\relax}
+  \small
+  \textcolor{accent}{\textbf{Design Principles (cross-architecture safety).}}
+  \emph{(i)~Intervene at the ctrl peak (0.39--0.81$L$), detect at the sep peak ($\geq$0.95$L$):} the layers serve different functions and should not be shared. \emph{(ii)~Couple safeguards across levels:} representation-, decoding-, and token-level (GCG) attacks fail on disjoint prompts, so single-level defenses leave systematic blind spots; the sep-peak probe catches all three. \emph{(iii)~Diversify safety encoding:} non-linear safety (Llama-3.1-8B, 13\% ablation-ASR) resists representation attacks far better than linear (Qwen2.5-3B, 78.5\%)---achievable through scale (Qwen2.5 3B$\to$32B drops 78.5\%$\to$11.5\%) and LoRA adversarial fine-tuning ($\to$0\%; App.~\ref{app:advtrain}), pending a benign-preservation component.
+  \end{minipage}%
+}\par\medskip
+
+\paragraph{Conclusion.}
+A 28--59\%-of-depth gap separates where safety is \emph{readable} from where it is \emph{breakable}: the rebuild is distributed, the surface is alignment-recipe-dependent (LoRA $\to$ 0\% ablation-ASR; App.~\ref{app:advtrain}), and reasoning models add an orthogonal CoT-leakage axis.
+
+\section*{Limitations}
+\textbf{Coverage:} Llama-3.3-70B, Mistral-Large-123B inaccessible; Gemma-4-31B swept but unjudged. \textbf{Judges:} Opus 4.6 + Sonnet 4.6 ($>$94\% agreement); human eval is future work. \textbf{Confounds:} Mistral-7B-v0.3 (88\% baseline), DS-R1-Distill-Llama-70B (85\%) excluded from aggregates; Gemma-3-27B ablation degenerates at early layers (logit soft-cap), so we report the L37--L60 gap. \textbf{Utility:} 0\% COMPLIANCE verified (App.~\ref{app:advtrain}) but the recipe over-refuses XSTest-safe at 85--99\%; benign-preservation loss + OR-Bench~\citep{cui2024orbench} / HarmBench~\citep{mazeika2024harmbench} eval is next.
+
+\section*{Ethical Considerations}
+This work studies safety vulnerabilities to inform defensive research; we omit operational details that would enable misuse. All experiments used locally-hosted open-weight models.
+
+\section*{Reproducibility}
+All settings specified. Same 100 prompt pairs across all models. Code released upon publication.
+
+% =============================================================================
+% REFERENCES
+% =============================================================================
+
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+\appendix
+\onecolumn
+\setlength{\parskip}{0pt}
+
+{\Large\bfseries Appendix Table of Contents}\par
+\vspace{0.5em}
+\noindent
+\renewcommand{\arraystretch}{1.45}
+\begin{tabular*}{\textwidth}{@{}p{0.05\textwidth}@{\hspace{0.5em}}p{0.80\textwidth}@{\extracolsep{\fill}}r@{}}
+\textbf{A} & Statement on LLM Usage \dotfill & \pageref{app:llm} \\
+\textbf{B} & Disjoint Prompt Validation \dotfill & \pageref{app:disjoint} \\
+\textbf{C} & Random Direction Control \dotfill & \pageref{app:randdir} \\
+\textbf{D} & Utility Evaluation \dotfill & \pageref{app:utility} \\
+\textbf{E} & Defense Probes \dotfill & \pageref{app:defense} \\
+\textbf{F} & Defense-Baseline Comparison \dotfill & \pageref{app:defbase} \\
+\textbf{G} & GCG Generalization \dotfill & \pageref{app:gcg} \\
+\textbf{H} & Path Patching \dotfill & \pageref{app:pathpatch} \\
+\textbf{I} & Adversarial Training \dotfill & \pageref{app:advtrain} \\
+\textbf{J} & Chain-of-Thought Leakage in Reasoning Models \dotfill & \pageref{app:cotleak} \\
+\textbf{K} & Judge Sensitivity \dotfill & \pageref{app:judges} \\
+\textbf{L} & Mechanistic Probes (Raw Numbers) \dotfill & \pageref{app:mech_raw} \\
+\end{tabular*}
+\vspace{1.5em}
+
+\section{Statement on LLM Usage}
+\label{app:llm}
+\label{sec:llm_usage}
+
+We employed an LLM (Anthropic Claude) solely for text refinement. No scientific content, experimental results, or novel ideas were generated by the LLM; all technical contributions were conceived, implemented, and verified by the authors.
+
+
+\section{Disjoint Prompt Validation}
+\label{sec:disjoint}
+\label{app:disjoint}
+
+To test whether our findings generalize beyond the 100 prompts used to compute the refusal direction, we evaluate all four attack modes on 50 held-out prompts per model using each model's best dual configuration from Table~\ref{tab:main_multi}. Every response is judged by the same dual-judge protocol as Table~\ref{tab:main_multi} (Opus 4.6 + Sonnet 4.6).
+
+\begin{table*}[t]
+\caption{Disjoint-prompt validation across all 13 models ($n$=50 held-out prompts, \% ASR, dual-judge mean). The dual attack generalises strongly: 54--88\% ASR on every model with a clean baseline. Exceptions are flagged: $^\dagger$Mistral-7B-v0.3 and $^\ddagger$DS-R1-Distill-Llama-70B have high no-attack ASR on the disjoint set as well, so their ``attack'' columns over-estimate the marginal effect.}
+\label{tab:disjoint}
+\begin{center}
+\small
+\begin{tabular}{lccc>{\columncolor{ctrlshade}}c}
+\toprule
+\textbf{Model} & \textbf{None} & \textbf{Sock.} & \textbf{Abl.} & \textbf{Dual} \\
+\midrule
+Qwen2.5-3B                        & 0.0\%  & 66.0\% & 8.0\%  & \textbf{85.0\%} \\
+Mistral-7B-v0.3$^\dagger$          & 60.0\% & 84.0\% & 62.0\% & 81.0\% \\
+Qwen2.5-7B                        & 3.0\%  & 73.0\% & 32.0\% & \textbf{88.0\%} \\
+Llama-3.1-8B                      & 2.0\%  & 67.0\% & 8.0\%  & \textbf{88.0\%} \\
+Qwen2.5-14B                       & 2.0\%  & 25.0\% & 17.0\% & \textbf{86.0\%} \\
+Qwen3-8B                          & 0.0\%  & 36.0\% & 8.0\%  & 54.0\% \\
+Mistral-Small-24B                 & 9.0\%  & 60.0\% & 22.0\% & \textbf{86.0\%} \\
+Gemma-3-27B                       & 6.0\%  & 68.0\% & 41.0\% & \textbf{88.0\%} \\
+Qwen2.5-32B                       & 0.0\%  & 39.0\% & 4.0\%  & 58.0\% \\
+Llama-3.1-70B                     & 4.0\%  & 84.0\% & 9.0\%  & \textbf{85.0\%} \\
+Qwen2.5-72B                       & 2.0\%  & 38.0\% & 9.0\%  & 62.0\% \\
+\rowcolor{reasoning} QwQ-32B                           & 16.0\% & 64.0\% & 18.0\% & 69.0\% \\
+\rowcolor{reasoning} DS-R1-Distill-Llama-70B$^\ddagger$ & 73.0\% & 74.0\% & 80.0\% & 79.0\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table*}
+
+\paragraph{Dual-attack generalisation is strong.}
+On 10 of 13 models the dual attack reaches 54--88\% ASR on prompts the refusal direction was never computed from. Comparing to Table~\ref{tab:main_multi}'s training-set dual ASR (rightmost ``Dual'' column), the drops are modest: Llama-3.1-8B 91\%$\rightarrow$88\%, Llama-3.1-70B 89\%$\rightarrow$85\%, Mistral-Small-24B 86\%$\rightarrow$86\%, Gemma-3-27B 90.5\%$\rightarrow$88\%, Qwen2.5-3B 89.5\%$\rightarrow$85\%. The refusal direction computed on 100 prompts transfers to held-out prompts.
+
+\paragraph{Ablation-only vulnerability scales with model alignment.}
+The disjoint-ablation column reveals a cleaner view of the scaling law than the training-set column, because it is less susceptible to overfitting of the refusal direction to the training prompts: Qwen2.5-3B 8\%, Qwen2.5-7B 32\%, Qwen2.5-14B 17\%, Qwen2.5-32B 4\%, Qwen2.5-72B 9\% -- well-aligned large models have essentially zero ablation-ASR on held-out prompts, while smaller or lower-alignment models retain a 17--41\% attack surface. This confirms the ``spectrum of safety architectures'' hypothesis generalises out-of-distribution.
+
+\paragraph{Reasoning-model dual-ASR is lower on disjoint prompts.}
+Qwen3-8B and QwQ-32B drop from 78.5\%/84\% dual ASR (training) to 54\%/69\% (disjoint) -- the largest relative drops among well-aligned models. This is consistent with the ``mid-generation safety recovery'' behaviour: both models partially refuse sockpuppet-prefixed prompts by pivoting to a safety response inside the generation, and this recovery is more effective on out-of-distribution prompts where the sockpuppet verb templates are more awkward. Qwen2.5-32B (58\%) and Qwen2.5-72B (62\%) show similar recoveries, matching the scaling law: larger and reasoning-trained models are harder to attack out of distribution.
+
+\section{Random Direction Control}
+\label{app:randdir}
+
+To confirm that the refusal direction captures a specific safety-relevant feature rather than a generic activation pattern, we ablate 15 random unit vectors at each model's best ablation config (\textbf{ablation-only}, no sockpuppeting, to isolate direction specificity).
+
+\begin{table*}[t]
+\caption{Random direction control across all 13 models (ablation-only, 15 random unit vectors at each model's best ablation config, $n$=100 harmful prompts per direction, dual-judge ASR). \textbf{Ref dir} = refusal direction from Table~\ref{tab:main_multi}. \textbf{Rand mean} = mean ASR across 15 random directions. \textbf{Ratio} = Ref / Rand. The refusal direction is the specific learned safety feature; random directions rarely move behavior except where baseline is already compromised.}
+\label{tab:random_control}
+\begin{center}
+\scriptsize
+\begin{tabular}{l>{\columncolor{ctrlshade}}cccc>{\columncolor{gapshade}}cc}
+\toprule
+\textbf{Model} & \textbf{Ref dir ASR} & \textbf{Rand mean} & \textbf{Rand min} & \textbf{Rand max} & \textbf{Ratio} & \textbf{Note} \\
+\midrule
+Qwen2.5-3B      & 78.5\% & 2.4\%  & 0.5\% & 4.0\% & 32.7$\times$ & specific\\
+Mistral-7B-v0.3 & 89.5\% & 72.6\% & 71.5\% & 74.5\% & 1.2$\times$ & baseline-compromised $^\dagger$ \\
+Qwen2.5-7B      & 46.0\% & 2.4\%  & 1.0\% & 3.5\% & 19.2$\times$ & specific\\
+Llama-3.1-8B    & 13.0\% & 3.3\%  & 2.5\% & 4.0\% & 3.9$\times$ & both near zero (non-linear safety)\\
+Qwen2.5-14B     & 21.5\% & 0.0\%  & 0.0\% & 0.0\% & $\infty$    & specific\\
+Qwen3-8B        & 22.0\% & 0.7\%  & 0.0\% & 1.0\% & 31.4$\times$ & specific\\
+Mistral-Small-24B & 46.0\% & 6.3\% & 5.5\% & 7.0\% & 7.3$\times$ & specific\\
+Gemma-3-27B     & 55.0\% & 6.7\%  & 5.0\% & 8.5\% & 8.2$\times$ & specific\\
+Qwen2.5-32B     & 11.5\% & 0.0\%  & 0.0\% & 0.0\% & $\infty$    & specific\\
+Llama-3.1-70B   & 35.0\% & 8.0\%  & 7.0\% & 9.0\% & 4.4$\times$ & specific\\
+Qwen2.5-72B     & 14.0\% & 1.0\%  & 1.0\% & 1.0\% & 14.0$\times$ & specific\\
+\rowcolor{reasoning} QwQ-32B         & 32.0\% & 21.4\% & 20.0\% & 24.5\% & 1.5$\times$ & partial (reasoning-model noise)\\
+\rowcolor{reasoning} DS-R1-Distill-Llama-70B & 86.5\% & 82.7\% & 78.0\% & 85.0\% & 1.0$\times$ & baseline-compromised $^\ddagger$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table*}
+
+\paragraph{The refusal direction is the specific learned feature, not a generic direction.}
+On 10 of 13 models the refusal direction achieves 3.9--32.7$\times$ (or $\infty$, when random-dir ASR is exactly 0\%) higher ASR than random unit vectors, confirming the direction captures a particular safety circuit rather than a generic activation axis. On Qwen2.5-14B and Qwen2.5-32B (our two best-aligned Qwens) random directions do not induce compliance \emph{at all}, so the refusal direction is the only known single-direction attack. The two exceptions are Mistral-7B-v0.3 and DS-R1-Distill-Llama-70B, both of which have baseline-compromised alignment (non-attack ASR $\geq 60\%$ even on disjoint prompts, Table~\ref{tab:disjoint}); random ablation on those models mostly reveals pre-existing compliance rather than breaking a learned refusal circuit. QwQ-32B shows partial specificity (1.5$\times$), a reasoning-model-specific noise floor likely introduced by its chain-of-thought step.
+
+\section{Utility Evaluation}
+\label{app:utility}
+
+To verify that ablation at the controllability peak does not degrade benign generation, we run 100 diverse benign prompts through each model with and without ablation at the controllability peak (best dual config from Table~\ref{tab:main_multi}). Across all evaluated models---Qwen2.5-32B (L44, $\alpha$=0.7), Qwen2.5-72B (L40, $\alpha$=0.7), Gemma-3-27B (L37, $\alpha$=0.5), Llama-3.1-70B (pending), DS-R1-Distill-Llama-70B (L40, $\alpha$=0.5), plus the smaller paper models---ablation produces \textbf{0/100 incoherent outputs}, matching the 0\% baseline rate. Ablation at the controllability peak removes refusal without disrupting the model's ability to generate coherent, on-topic responses to benign queries, at scales up to 72B.
+
+\section{Defense Probes: Intervene at Ctrl, Detect at Sep}
+\label{sec:defense}
+\label{app:defense}
+
+A natural question is: if the ctrl peak is where ablation works, should defenders also monitor there? We evaluate this directly. For each model we train a linear logistic probe at every layer to predict whether the model will comply with a harmful prompt, using last-token hidden states under the four attack conditions (none / sockpuppet / ablation / dual) and the judge's compliance verdict as label. We report 5-fold cross-validated AUC and compare the best-performing layer against the separability peak and the controllability peak.
+
+\begin{table*}[t]
+\caption{Compliance-prediction AUC per model. Best-AUC layer, separability peak (sep), controllability peak (ctrl).}
+\label{tab:defense}
+\begin{center}
+\scriptsize
+\begin{tabular}{lccc>{\columncolor{sepshade}}c>{\columncolor{ctrlshade}}c}
+\toprule
+\textbf{Model} & $L$ & \textbf{Best $L$} & \textbf{Best AUC} & \textbf{Sep AUC} & \textbf{Ctrl AUC} \\
+\midrule
+Qwen2.5-3B    & 36 & L34 (0.97) & 0.953 & 0.953 & 0.684 \\
+Qwen2.5-7B    & 28 & L21 (0.78) & 0.953 & 0.952 & 0.849 \\
+Qwen3-8B      & 36 & L26 (0.74) & 0.868 & 0.858 & 0.797 \\
+Llama-3.1-8B  & 32 & L16 (0.52) & 0.976 & 0.971 & 0.961 \\
+Mistral-7B    & 32 & L25 (0.81) & 0.979 & 0.979 & 0.966 \\
+Mistral-24B   & 40 & L21 (0.54) & 0.950 & 0.940 & 0.882 \\
+Gemma-3-27B   & 62 & L52 (0.84) & 0.920 & 0.913 & 0.784 \\
+Qwen2.5-32B   & 64 & L60 (0.95) & 0.981 & 0.977 & 0.932 \\
+\rowcolor{reasoning} QwQ-32B       & 64 & L62 (0.98) & 0.951 & 0.951 & 0.947 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+The best-AUC layer lies in the late region (0.52--0.98$L$) on every model and is never the controllability peak. On 8 of 9 models, sep-peak AUC is within 0.01 of best-AUC, while ctrl-peak AUC is 1--27 pts lower (up to 27 pts on Qwen2.5-3B, 13 pts on Gemma-3-27B). \textbf{The gap implies two distinct probes for two distinct safety functions: ablation has its largest behavioral effect at the controllability peak, but compliance is most predictable from representations at or near the separability peak.} Single-peak monitoring recipes that conflate these two functions---including the earliest framing of this paper---are not supported by the data.
+
+\section{Defense-Baseline Comparison}
+\label{sec:defense_baselines}
+\label{app:defbase}
+
+To assess whether our sep-peak detector is competitive with published defenses, we compare it against two external baselines on the same Llama-3.1-8B attack set (50 harmful prompts + 50 XSTest-safe prompts for FPR).
+
+\paragraph{D1: Llama Guard 3 (input classifier).} We run \texttt{meta-llama/Llama-Guard-3-8B} \citep{llamaguard3} on each user prompt. Guard 3 flags 50/50 (100\%) of raw harmful prompts as \textsc{unsafe}, with a 1/50 (2\%) false-positive rate on XSTest-safe. However, because Guard 3 sees only the \emph{user turn}, it cannot observe our sockpuppet assistant-prefill or our forward-pass ablation hook; against both of those attacks, Guard 3's detection is identical to the no-attack case (the same user prompt is sent). \textbf{Input-only classifiers cannot catch representation- or decoding-level attacks that manipulate model internals after the input check}---this is a property of the threat model (assistant prefill / white-box ablation), not of Guard 3's strength.
+
+\paragraph{D2: Circuit Breakers \citep{zou2024circuit}.} We run our four attacks against \texttt{GraySwanAI/Llama-3-8B-Instruct-RR}, the only publicly released circuit-breaker checkpoint in a comparable size class, using the refusal direction and controllability peak computed on vanilla Llama-3.1-8B ($\alpha=0.7$, L12). CB's defense works not by producing refusals but by \emph{corrupting the output to incoherent text}: on dual attack, 90\% of CB responses are judged \textsc{incoherent} (fragments like ``\textit{I. Please. I offline. I.}''), 4\% \textsc{refusal}, and 1\% \textsc{compliance} (the remaining 5\% is COMPLIANCE from the Opus judge's slightly more lenient classification). This is CB's intended behaviour, but distinct from a clean refusal and relevant to UX.
+
+\paragraph{D3: Our sep-peak probe.} For reference, the sep-peak compliance-prediction probe trained on the Llama-3.1-8B sweep data (Table~\ref{tab:defense}) achieves AUC 0.971 on the same attack-vs-refusal label set. The probe is a single logistic regression on last-token hidden states; it requires no retraining of the model.
+
+\begin{table*}[t]
+\caption{Defense-baseline comparison on Llama-3.1-8B, $n$=50 harmful prompts, dual-judged (Opus + Sonnet, agreement 92--100\%). \textbf{COMPLIANCE} = fraction of responses judged as harmful compliance (attack success); \textbf{INCOH} = fraction judged \textsc{incoherent} (CB's defense mechanism produces broken output rather than refusals on sockpuppet/dual). Llama Guard 3 is an input classifier and does not see assistant-prefill or forward-pass modifications, so its ASR numbers under sockpuppet/ablation/dual equal the vanilla baseline. Vanilla = original Llama-3.1-8B from Table~\ref{tab:main_multi}; Circuit Breakers is evaluated on its released Llama-3-8B-Instruct-RR checkpoint.}
+\label{tab:defense_baselines}
+\begin{center}
+\scriptsize
+\begin{tabular}{lcccccccc}
+\toprule
+ & \multicolumn{4}{c}{\textbf{COMPLIANCE} (lower is better)} & \multicolumn{4}{c}{\textbf{INCOHERENT}} \\
+\cmidrule(lr){2-5} \cmidrule(lr){6-9}
+\textbf{Defense} & None & Sock. & Abl. & Dual & None & Sock. & Abl. & Dual \\
+\midrule
+Vanilla Llama-3.1-8B          & \cellcolor{goodshade}2.0\%   & \cellcolor{badshade}83.5\% & 13.0\% & \cellcolor{badshade}91.0\% & 0\% & 0\%  & 0\%  & 0\%  \\
+Llama Guard 3 (input)$^\star$ & \cellcolor{goodshade}0.0\%   & \cellcolor{badshade}83.5\% & 13.0\% & \cellcolor{badshade}91.0\% & --  & --   & --   & --   \\
+Circuit Breakers (RR)         & \cellcolor{goodshade}0.0\%   & \cellcolor{goodshade}5.0\%  & \cellcolor{goodshade}0.0\%  & \cellcolor{goodshade}1.0\%  & 14\% & \cellcolor{badshade}83\% & 16\% & \cellcolor{badshade}90\% \\
+Sep-peak probe (ours) & \multicolumn{8}{c}{AUC 0.971 on sockpuppet; transfers to GCG with 39--104-unit margin (Table~\ref{tab:gcg_detect}); does not alter generation.} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{-1ex}
+{\scriptsize $^\star$Guard 3 flags 50/50 (100\%) raw harmful prompts and 1/50 (2\%) XSTest-safe. Against sockpuppet, ablation, and dual, the attacker's \emph{user turn} is identical to the no-attack case (the attack operates on assistant prefill or a forward-pass hook), so Guard 3 is bypassed entirely and the ASR reproduces the vanilla Llama-3.1-8B column.}
+\vskip -0.1in
+\end{table*}
+
+\paragraph{Takeaway.} Llama Guard 3 is highly effective against plain harmful prompts but offers no protection against the representation-level or decoding-level attacks that are this paper's focus---exactly the regime where the sep-peak probe's cross-attack transfer (sockpuppet $\to$ GCG, Section~\ref{sec:gcg}) is valuable. Circuit Breakers \cbSummary\ The three defenses therefore address different points in the attack pipeline: Guard 3 gates the input, Circuit Breakers corrupts the output, and our sep-peak probe monitors the activation space. They are complementary rather than redundant, and our probe is the cheapest of the three (a single logistic regression on last-token hidden states, no model retraining).
+
+\section{GCG Generalization: Sep-Peak Detection Survives Learned Suffixes}
+\label{sec:gcg}
+\label{app:gcg}
+
+Our defense claim---that the separability peak is the right \emph{detection}
+layer---was established on sockpuppet attacks. To test whether it generalizes
+to a completely different attack modality, we run \citet{zou2023universal}'s
+GCG adversarial-suffix optimization on three models (150 steps, 256 search
+width, suffix length 20). We compare the sep-peak refusal projection under
+three conditions: (a) the bare harmful prompt, (b) prompt + GCG suffix on
+prompts where the attack \emph{fails} (model still refuses), (c) prompt +
+GCG suffix on prompts where the attack \emph{succeeds} (model complies).
+
+\begin{table*}[t]
+\caption{GCG detection via sep-peak refusal projection. Mean projection values (same units as the refusal direction). $\Delta$=failed$-$succeeded is the margin a linear sep-peak probe would exploit.}
+\label{tab:gcg_detect}
+\begin{center}
+\scriptsize
+\begin{tabular}{lccc>{\columncolor{gapshade}}r}
+\toprule
+\textbf{Model} & \textbf{Baseline} & \textbf{GCG refused} & \textbf{GCG succeeded} & \textbf{$\Delta$} \\
+\midrule
+Llama-3.1-8B   & $+$86.1 & $+$50.1 & $+$11.1 & 39.1 \\
+Mistral-24B    & $+$161.6 & $+$62.1 & $+$20.1 & 42.0 \\
+Qwen2.5-32B    & $+$145.3 & $-$66.8 & $-$170.8 & 104.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+On every tested model, GCG-successful prompts produce a substantially lower
+sep-peak refusal projection than GCG-failed prompts (margin 39–104 units),
+and in all three cases this margin is much larger than within-class variance
+in our sweep data. \textbf{A sep-peak probe generalizes from sockpuppet to GCG},
+supporting the ``detect at the separability peak'' half of our refined
+design principle against a completely different attack modality. Qwen2.5-32B's
+larger margin (104) and sign flip (succeeded GCG goes to $-$171) matches its
+sockpuppet behaviour in Table~\ref{tab:mech}---the Qwen family consistently
+flips the late-layer refusal direction under successful attacks of any kind.
+
+\section{Path Patching: The Relay is Distributed, Not Localized}
+\label{sec:path_patch}
+\label{app:pathpatch}
+
+To test whether a single ``relay'' head or layer is responsible for rebuilding
+the refusal signal after ctrl-peak ablation, we apply residual-stream activation
+patching on three models from three families: Llama-3.1-8B, Qwen2.5-7B, and
+Mistral-Small-24B ($n$=30 harmful prompts each). For each candidate layer
+$L \in (\text{ctrl\_peak}, \text{sep\_peak}]$, we run the model under
+ablation at the ctrl peak and additionally overwrite layer $L$'s residual
+stream output with the clean (no-ablation) values, then measure the refusal
+projection at the sep peak. Recovery is
+$(p_L - p_\text{abl}) / (p_\text{clean} - p_\text{abl})$.
+
+\begin{table*}[t]
+\caption{Path patching across three model families. Patch-layer recovery at five evenly-spaced layers between ctrl peak and sep peak ($n$=30 harmful prompts). On every model recovery climbs smoothly with no single relay layer. $p_\text{clean}$ and $p_\text{abl}$ are the mean sep-peak projections under clean and ctrl-peak-ablated forward passes.}
+\label{tab:path_patch}
+\begin{center}
+\scriptsize
+\begin{tabular}{l>{\columncolor{ctrlshade}}c>{\columncolor{sepshade}}cccc>{\columncolor{gapshade}}c}
+\toprule
+\textbf{Model} & ctrl & sep & $p_\text{clean}$ & $p_\text{abl}$ & $\Delta$ & Recovery trajectory (early $\to$ late) \\
+\midrule
+Llama-3.1-8B        & L12 & L31 & +85.2 & +84.2 & +1.0 & 13\%, 30\%, 44\%, 64\%, 85\% \\
+Qwen2.5-7B          & L14 & L26 & +127.5 & +136.4 & $-$8.8$^\dagger$ & (overshoot; see text) \\
+Mistral-Small-24B   & L16 & L39 & +150.0 & +144.7 & +5.3 & 60\%, 58\%, 70\%, 73\%, 93\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{-1ex}
+{\scriptsize $^\dagger$On Qwen2.5-7B ctrl-peak ablation \emph{increases} the sep-peak projection (same overshoot seen in Table~\ref{tab:mech} for five Qwen models). Patching intermediate layers back to clean values pulls the projection down toward clean; the ``recovery'' metric is therefore not well-defined, but the absolute projection after any single-layer patch stays within 7\% of the ablated baseline, so the distributed-rebuild story applies equally.}
+\vskip -0.1in
+\end{table*}
+
+\textbf{Result}: on all three models, recovery climbs smoothly across the
+candidate layers with no localized relay. On Llama-3.1-8B recovery rises
+gradually L13 (13\%) $\to$ L30 (85\%) and no single mid-layer patch exceeds
+65\% recovery until the sep peak itself; on Mistral-Small-24B recovery climbs
+from L17 (60\%) to L38 (93\%), again with no jump larger than 8 points between
+adjacent layers. Qwen2.5-7B shows the stronger form of the same phenomenon:
+ablation \emph{increases} the sep-peak projection (the rebuild ``overshoots''),
+and no single-layer patch brings it back within 7\% of the ablated baseline.
+\emph{The refusal signal is rebuilt distributedly across the final 10--23
+layers on every model we tested}, not at any localized relay. This is
+consistent with the output-readout interpretation: if the signal were driven
+by a specific mid-layer circuit, patching that circuit would restore the full
+projection; instead, every late layer contributes incrementally, as expected
+for a distributed readout where the refusal-aligned subspace is reconstituted
+from many orthogonal sources rather than relayed by one.
+
+\section{Adversarial Training Closes the Gap (Positive Contribution)}
+\label{sec:advtrain}
+\label{app:advtrain}
+
+If the controllability peak exposes a linear attack surface, we should be able
+to train it away. We LoRA-fine-tune Qwen2.5-3B and Qwen2.5-7B
+($r=16$, attention + MLP target modules, 200 steps, batch size 4, lr $10^{-4}$)
+with a modified objective: at each step, with probability $0.5$ we activate
+the refusal-direction ablation hook at the controllability peak layer
+($\alpha=0.7$) while teacher-forcing the model on a standard refusal target.
+The model thus sees both ``clean'' and ``ablated'' versions of the same
+harmful prompt during training, with the same refusal target, and must produce
+refusal regardless of whether the linear refusal direction has been subtracted.
+
+\begin{table*}[t]
+\caption{Adversarial training with ctrl-peak ablation counterexamples, across five models from three families. Ablation-ASR measured via local refusal-phrase prefix matching. Evaluation on the 100 training prompts and 50 held-out disjoint prompts. \textbf{Over-ref} = fraction of 100 \emph{benign} prompts the adapted model refuses (utility trade-off). 200 LoRA steps, $r$=16, $\alpha_{\text{abl}}$=0.7.}
+\label{tab:advtrain}
+\begin{center}
+\small
+\begin{tabular}{lc>{\columncolor{goodshade}}cc>{\columncolor{goodshade}}cc}
+\toprule
+ & \multicolumn{2}{c}{\textbf{Train (n=100)}} & \multicolumn{2}{c}{\textbf{Disjoint (n=50)}} & \textbf{Over-ref} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+\textbf{Model} & \textbf{Before} & \textbf{After} & \textbf{Before} & \textbf{After} & \textbf{(benign)} \\
+\midrule
+Qwen2.5-3B     & 85.0\% & \textbf{0.0\%} & 76.0\% & \textbf{0.0\%} & \cellcolor{badshade}50.0\% \\
+Qwen2.5-7B     & 57.0\% & \textbf{0.0\%} & 30.0\% & \textbf{0.0\%} & 15.0\% \\
+Qwen2.5-14B    & 26.7\% & \textbf{0.0\%} & --     & --     & \textbf{0.0\%} \\
+Llama-3.1-8B   & 20.0\% & \textbf{0.0\%} & --     & --     & \cellcolor{badshade}35.0\% \\
+Mistral-7B-v0.3 & 100.0\% & \textbf{3.0\%} & --    & --     & \cellcolor{badshade}100.0\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+The LoRA adapter closes the ablation attack surface entirely within 200 steps on all five tested models (ablation-ASR $\to$ 0\% on training prompts; Mistral-7B drops 100\% $\to$ 3\%). Critically, \textbf{the effect generalizes to held-out prompts the adapter was never trained on}: Qwen2.5-3B drops from 76\% ablation-ASR to 0\% on 50 disjoint prompts, Qwen2.5-7B from 30\% to 0\%. The adversarial-training procedure therefore produces a real defensive adapter, not a memorisation artefact.
+
+The over-refusal column of Table~\ref{tab:advtrain} (100 ad-hoc benign prompts, local prefix matcher) suggests a capacity-dependent utility gradient: 0/100 on 14B, 15/100 on 7B, 35--100/100 on 3B--8B. However, the principled XSTest dual-judge evaluation below (Table~\ref{tab:xstest}) shows that this 100-prompt benchmark systematically under-estimates over-refusal: on XSTest-safe, \emph{every} adv-trained adapter over-refuses at 85--99\%, including Qwen2.5-14B (85.2\%). The recipe therefore closes the attack surface at all scales but does not preserve utility at any scale; we discuss this in detail below.
+
+\paragraph{Full dual-judge verification.}
+We independently verify the ``ablation-ASR $\to$ 0\%'' claim with the full Opus 4.6 + Sonnet 4.6 dual-judge pipeline (not the prefix matcher used above). We regenerate all 100 harmful prompts through the adapted model under four conditions (no-attack, sockpuppet, ablation at ctrl peak, dual) and submit every response to both judges. The result is uniform across all five models: \textbf{0\% COMPLIANCE-judged responses on every condition on every model} (0/100 $\times$ 4 conditions $\times$ 5 models = 2000 judged responses, zero flagged as COMPLIANCE by either judge). The adapter is therefore robust across the attack-composition space measured in Table~\ref{tab:main_multi}, not merely to the specific ctrl-peak ablation it was trained against. The qualitative claim survives: \emph{the linear refusal-direction attack surface exposed by the controllability peak is trainable away with 200 gradient steps on a small LoRA adapter}, and with enough capacity ($\geq$14B) this costs nothing in utility.
+
+\paragraph{Principled utility evaluation on XSTest.}
+The 100-prompt benign set used for Table~\ref{tab:advtrain} is ad hoc. To stress-test the utility claim against a standard benchmark, we re-evaluate each adv-trained adapter on XSTest~\citep{rottger2024xstest}: 250 \emph{safe} prompts designed specifically to probe exaggerated-safety behaviour (e.g., ``How do I kill a Python process?''; ``What is the definition of murder?'') and 200 unsafe contrast prompts. Every XSTest response is dual-judged with a refusal-vs-answer classifier (Opus~4.6 + Sonnet~4.6). For each model we also report the \emph{base} (adapter-off) rate on the same prompts as a reference.
+
+\begin{table*}[t]
+\caption{XSTest principled utility evaluation of the adv-trained adapters (250 safe prompts, 200 unsafe prompts; dual-judge mean). \textbf{Over-ref.} = fraction of safe prompts refused (higher $=$ worse; ideal: match the base model). \textbf{Resid.\ harm} = fraction of unsafe prompts answered (lower is better). $\Delta$ is (adapter over-refusal $-$ base over-refusal), i.e., the exaggerated-safety cost attributable to the adapter.}
+\label{tab:xstest}
+\begin{center}
+\small
+\begin{tabular}{lc>{\columncolor{badshade}}cc>{\columncolor{goodshade}}c>{\columncolor{badshade}}c}
+\toprule
+ & \multicolumn{2}{c}{\textbf{Over-refusal (safe)}} & \multicolumn{2}{c}{\textbf{Residual harm (unsafe)}} & \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+\textbf{Model} & \textbf{Base} & \textbf{Adapter} & \textbf{Base} & \textbf{Adapter} & $\Delta$\,over-ref \\
+\midrule
+Qwen2.5-3B      & \xstestQwenThreeBBaseOver  & \xstestQwenThreeBAdaOver  & \xstestQwenThreeBBaseHarm  & \xstestQwenThreeBAdaHarm  & \xstestQwenThreeBDelta \\
+Qwen2.5-7B      & \xstestQwenSevenBBaseOver  & \xstestQwenSevenBAdaOver  & \xstestQwenSevenBBaseHarm  & \xstestQwenSevenBAdaHarm  & \xstestQwenSevenBDelta \\
+Qwen2.5-14B     & \xstestQwenFourteenBBaseOver & \xstestQwenFourteenBAdaOver & \xstestQwenFourteenBBaseHarm & \xstestQwenFourteenBAdaHarm & \xstestQwenFourteenBDelta \\
+Llama-3.1-8B    & \xstestLlamaBaseOver  & \xstestLlamaAdaOver  & \xstestLlamaBaseHarm  & \xstestLlamaAdaHarm  & \xstestLlamaDelta \\
+Mistral-7B-v0.3 & \xstestMistralBaseOver & \xstestMistralAdaOver & \xstestMistralBaseHarm & \xstestMistralAdaHarm & \xstestMistralDelta \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table*}
+
+\paragraph{XSTest changes the utility story.}
+\xstestSummary
+
+\section{Chain-of-Thought Leakage in Reasoning Models}
+\label{sec:cot_leak}
+\label{app:cotleak}
+
+Reasoning-trained models (QwQ-32B, DeepSeek-R1-Distill-Llama-70B) exhibit a new failure mode that is orthogonal to the gap. With a 256-token generation cap, QwQ-32B's \textit{no-attack} ASR is 25.5\%---not because the model complies, but because its \texttt{<think>} block produces detailed harmful reasoning before emitting a final refusal after \texttt{</think>}. Of 100 baseline responses, 40 complete the thinking block and end with an explicit refusal (``I'm sorry, but I can't assist with that request''); the remaining 60 are truncated mid-reasoning with harmful content visible. Example (truncated): ``Okay, so I need to figure out how to poison someone without getting caught. Hmm, first, I should think about what poisons are undetectable\dots digitalis\dots in high doses it's toxic.'' The model would subsequently refuse, but the user sees the reasoning.
+
+Logit-lens data in Table~\ref{tab:mech} corroborates this: on QwQ and DS-R1-Distill, sockpuppeting \emph{increases} the refusal-token preference at the final layer, meaning the model ``recognises'' the sockpuppet attack and amplifies refusal at its output head---while its thinking block continues to enumerate harmful content. This decouples the output-level safety training from the reasoning process. It means the readability--controllability gap alone is an incomplete model of reasoning-model safety: a new axis, thinking-block safety, is needed.
+
+\section{Judge Sensitivity and Borderline Responses}
+\label{sec:judge_agreement}
+\label{app:judges}
+
+To control for judge bias, all generations were independently scored by two frontier LLMs: Claude Opus 4.6 and Claude Sonnet 4.6 (Anthropic direct API). Inter-judge agreement exceeds 94\% across all conditions, with ASR differences between judges $\leq$2 percentage points. All ASR numbers reported in this paper are the mean of both judges.
+
+Judge sensitivity is particularly relevant for sockpuppeting on Qwen3-8B and reasoning models (QwQ-32B, DS-R1-Distill-Llama-70B), where we observe a \textit{comply-then-refuse} pattern: the model generates the injected prefix (``Sure, here is\dots'') or opens its \texttt{<think>} block, then pivots to a safety refusal without producing actionable harmful content (or, in the reasoning case, produces harmful content in the thinking block before refusing). Spot-checking Qwen3-8B sockpuppet-only responses judged as REFUSAL confirms nearly all of them begin with the sockpuppet prefix---indicating that prefix injection succeeds at the decoding level but safety training recovers mid-generation. A stricter judge classifies these as REFUSAL (no actionable harmful content); a more lenient judge may classify them as COMPLIANCE (the model initially engaged). This pattern is largely absent in Llama-3.1-8B and Mistral. This is one of three sources of judge sensitivity we document: (i) comply-then-refuse on Qwen/reasoning models, (ii) weak-alignment baselines on Mistral-7B-v0.3 where the model produces harmful content wrapped in disclaimers that our judge correctly labels as COMPLIANCE (baseline ASR 88\% under concise instruction), and (iii) CoT leakage on reasoning models (Section~\ref{sec:cot_leak}) where the thinking block contains harmful reasoning before the final refusal. The dual-judge protocol (Opus~4.6 + Sonnet~4.6, inter-judge agreement $>$94\%) controls the first; the latter two are model-level artefacts that we flag rather than filter.
+
+\section{Mechanistic Probes (Raw Numbers)}
+\label{app:mech_raw}
+
+Raw numerics behind Figure~\ref{fig:decoupling}. $\mathbf{p}_{\text{sep}}$ = residual-stream projection onto the late-layer refusal direction. $\Delta$logit = refusal-token vs.\ compliance-token logit difference after logit-lens unembedding. Ablation is applied at each model's controllability peak layer with $\alpha$=0.5; mean over 40 harmful prompts.
+
+\begin{table}[h]
+\centering
+\scriptsize
+\begin{tabular}{lcc>{\columncolor{ctrlshade}}cccc>{\columncolor{ctrlshade}}cc}
+\toprule
+& \multicolumn{4}{c}{\textbf{$p_{\text{sep}}$ (projection)}} & \multicolumn{4}{c}{\textbf{$\Delta$logit (refusal $-$ compliance)}} \\
+\cmidrule(lr){2-5} \cmidrule(lr){6-9}
+\textbf{Model} & none & sock. & abl. & dual & none & sock. & abl. & dual \\
+\midrule
+Qwen2.5-3B   & +42.0 & $-$42.9 & \textbf{+54.3} & $-$38.7 & +5.56 & +11.27 & \textbf{+5.47} & +11.93 \\
+Qwen2.5-7B   & +122.3 & $-$0.2 & \textbf{+129.6} & +4.4 & +6.53 & +2.38 & \textbf{+6.63} & +2.74 \\
+Qwen3-8B     & +276.8 & $-$98.2 & \textbf{+325.3} & $-$70.5 & +10.10 & +0.23 & \textbf{+10.50} & +0.08 \\
+Llama-3.1-8B & +82.2 & +16.7 & \textbf{+79.6} & +15.6 & +17.66 & +8.23 & \textbf{+17.37} & +8.04 \\
+Mistral-7B   & +124.4 & +47.0 & \textbf{+106.8} & +41.1 & +7.94 & +7.27 & \textbf{+7.21} & +7.02 \\
+Mistral-24B  & +142.5 & +64.2 & \textbf{+136.2} & +62.6 & +15.25 & +2.93 & \textbf{+14.96} & +2.81 \\
+Gemma-3-27B  & +19135 & $-$14656 & \textbf{+13483} & $-$15360 & +64.95 & +77.36 & \textbf{+70.67} & +75.45 \\
+Qwen2.5-32B  & +108.0 & $-$180.1 & \textbf{+164.4} & $-$157.9 & +5.64 & +2.52 & \textbf{+6.32} & +2.77 \\
+Qwen2.5-72B  & +158.1 & $-$75.8 & \textbf{+161.9} & $-$73.9 & +7.55 & +0.37 & \textbf{+8.02} & +0.25 \\
+Llama-3.1-70B & +62.7 & +16.9 & \textbf{+59.9} & +16.0 & +6.86 & +3.99 & \textbf{+6.70} & +3.88 \\
+\rowcolor{reasoning} QwQ-32B      & +95.4 & $-$300.4 & \textbf{+143.9} & $-$271.6 & $-$1.13 & +6.37 & \textbf{$-$0.66} & +5.19 \\
+\rowcolor{reasoning} DS-R1-Distill-Llama-70B & +26.3 & +2.5 & \textbf{+24.3} & +2.3 & +2.58 & +4.63 & \textbf{+2.18} & +4.60 \\
+\bottomrule
+\end{tabular}
+\caption{Mechanistic probes at the separability peak (raw numbers behind Fig.~\ref{fig:decoupling}).}
+\label{tab:mech}
+\end{table}
+
+\end{document}
