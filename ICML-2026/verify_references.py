@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -31,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 USER_AGENT = "reference-verifier/0.1 (mailto:example@example.com)"
+SEMANTIC_SCHOLAR_API_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or os.environ.get("S2_API_KEY")
 ARXIV_RE = re.compile(r"arxiv[:/\s]*([0-9]{4}\.[0-9]{4,5})(?:v[0-9]+)?", re.I)
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.I)
 
@@ -144,8 +146,11 @@ def parse_fields(body: str) -> dict[str, str]:
     return fields
 
 
-def http_json(url: str) -> dict[str, Any] | None:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def http_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any] | None:
+    request_headers = {"User-Agent": USER_AGENT}
+    if headers:
+        request_headers.update(headers)
+    req = urllib.request.Request(url, headers=request_headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -234,14 +239,18 @@ def crossref_candidate(item: dict[str, Any]) -> Candidate:
 def semantic_by_id(prefix: str, identifier: str) -> Candidate | None:
     fields = "title,authors,year,venue,externalIds,url"
     url = f"https://api.semanticscholar.org/graph/v1/paper/{prefix}:{urllib.parse.quote(identifier)}?fields={fields}"
-    data = http_json(url)
+    data = http_json(url, semantic_headers())
     return semantic_candidate(data) if data and data.get("title") else None
 
 
 def semantic_by_title(title: str) -> list[Candidate]:
     q = urllib.parse.urlencode({"query": title, "limit": "3", "fields": "title,authors,year,venue,externalIds,url"})
-    data = http_json("https://api.semanticscholar.org/graph/v1/paper/search?" + q)
+    data = http_json("https://api.semanticscholar.org/graph/v1/paper/search?" + q, semantic_headers())
     return [semantic_candidate(item) for item in (data or {}).get("data", [])]
+
+
+def semantic_headers() -> dict[str, str]:
+    return {"x-api-key": SEMANTIC_SCHOLAR_API_KEY} if SEMANTIC_SCHOLAR_API_KEY else {}
 
 
 def semantic_candidate(item: dict[str, Any]) -> Candidate:
