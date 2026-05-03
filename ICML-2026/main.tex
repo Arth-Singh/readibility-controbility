@@ -26,8 +26,37 @@
 \definecolor{rowshade}{HTML}{F7F7F9}    % very pale gray
 \definecolor{accent}{HTML}{4A5BD4}      % deep pastel indigo (for emphasis text)
 \definecolor{reasoning}{HTML}{FFF4E0}   % very pale amber (for reasoning-model rows)
+\definecolor{topicshade}{HTML}{F7D1D1}
+\definecolor{motiveshade}{HTML}{F7E6B8}
+\definecolor{contribshade}{HTML}{FCF9B8}
+\definecolor{nuanceshade}{HTML}{D9F4D8}
+\definecolor{evidenceshade}{HTML}{D9E6FA}
+\definecolor{impactshade}{HTML}{DDF8F8}
+\definecolor{boxborder}{HTML}{2B416C}
 
 \newcommand{\theHalgorithm}{\arabic{algorithm}}
+\newcommand{\annrow}[3]{%
+  \noindent\colorbox{#1}{\parbox[t]{0.17\linewidth}{\scriptsize\bfseries #2}}%
+  \hspace{0.012\linewidth}%
+  \colorbox{#1!45}{\parbox[t]{0.77\linewidth}{\footnotesize #3}}%
+  \par\vspace{0.25em}%
+}
+\newcommand{\rqbox}[2]{%
+  \par\smallskip
+  \noindent\fcolorbox{boxborder}{white}{%
+    \begin{minipage}{0.96\linewidth}
+    \small\textcolor{boxborder}{\textbf{RQ#1:}}~#2
+    \end{minipage}}%
+  \par\smallskip
+}
+\newcommand{\takeawaybox}[2]{%
+  \par\smallskip
+  \noindent\fcolorbox{boxborder}{white}{%
+    \begin{minipage}{0.96\linewidth}
+    \small\textcolor{boxborder}{\textbf{RQ#1 Takeaway:}}~#2
+    \end{minipage}}%
+  \par\smallskip
+}
 
 % Blind submission
 \usepackage{icml2026}
@@ -115,7 +144,12 @@
 % ABSTRACT
 % =============================================================================
 \begin{abstract}
-Interpretability research on LLM safety implicitly assumes that the layers where safety features are most linearly separable are also the best targets for inference-time intervention. We show this assumption is wrong. Across \textbf{13 instruction-tuned models} spanning five families and scales from 3B to 72B---including two reasoning-trained variants (QwQ-32B, DeepSeek-R1-Distill-Llama-70B)---we identify a \textbf{readability vs.\ controllability gap}: refusal features are most readable in the final 2--3\% of layers ($\sim$0.96--1.00$L$) but most causally controllable much earlier (0.39--0.81$L$), a gap spanning \textbf{28--59\% of model depth}. Beyond establishing the gap, we provide a mechanistic explanation: on 11 of 12 models ablating the refusal direction at the controllability peak leaves the late-layer refusal projection within $\pm$10\% of baseline and the refusal-vs-compliance token-logit preference within 0.6 units of baseline, yet still changes behavior (ablation-only ASR spans 11.5--78.5\% across the 11 models with clean baselines, excluding Mistral-7B-v0.3 and DS-R1-Distill-Llama-70B whose high no-attack ASR confounds the ablation effect). Gemma-3-27B is the only exception, and even there sockpuppeting flips the projection much further than ablation. The ``refusal direction'' at the separability peak is best understood as an output-adjacent readout, not the causal variable; the gap reflects a representation/behavior decoupling rather than a decision-vs-format split. This decoupling sharpens the design implication: \textbf{intervene at the controllability peak, detect at the separability peak}---they serve different safety functions. Two further findings follow. First, we LoRA-fine-tune five models with ctrl-peak-ablation counterexamples and close the attack surface entirely (ablation-ASR $\to$ 0\% on held-out prompts, verified under full dual-judge evaluation across 2000 responses). XSTest dual-judge evaluation, however, shows the current recipe produces 85--99\% over-refusal on safe prompts across all five scales (Table~\ref{tab:xstest})---so the attack surface is demonstrably trainable away but the recipe is not deployment-ready without a benign-preservation component. Second, we document a new failure mode of reasoning models: their chain-of-thought leaks harmful content before the final refusal, bypassing output-level safety training regardless of the gap.
+\annrow{topicshade}{Topic}{LLM safety work often treats the most linearly readable refusal representation as the best place to monitor or intervene.}
+\annrow{motiveshade}{Motivation}{This conflates two different questions: where a safety feature is easy to \emph{read}, and where changing it actually \emph{controls} behavior.}
+\annrow{contribshade}{Result}{Across 13 instruction-tuned models from 3B--72B, refusal is most readable in the final 2--3\% of layers but most controllable much earlier, producing a 28--59\%-of-depth gap.}
+\annrow{nuanceshade}{Mechanism}{Ctrl-peak ablation changes behavior while leaving the late refusal projection nearly intact on 11/12 models, so the late ``refusal direction'' is an output-adjacent readout, not the causal variable.}
+\annrow{evidenceshade}{Evidence}{Dual-level attack sweeps, per-layer separation/probe measurements, logit-lens probes, path patching, random-direction controls, and held-out-prompt validation all support the gap.}
+\annrow{impactshade}{Takeaway}{Safety systems should \textbf{intervene at the controllability peak} but \textbf{detect at the separability peak}; the attack surface is trainable away, but current LoRA counterexample training over-refuses safe XSTest prompts.}
 \end{abstract}
 
 % =============================================================================
@@ -129,14 +163,11 @@ We investigate this question across \textbf{13 models} spanning five families (Q
 
 This gap is not the only structural finding. Ablation vulnerability spans a wide spectrum: ablation alone breaks Qwen2.5-3B (78.5\%) but barely affects Qwen2.5-32B (11.5\%) and Llama-3.1-8B (13\%), and within the Qwen2.5 family ablation ASR drops monotonically with scale (3B/7B/14B/32B/72B: 78.5 / 46.0 / 21.5 / 11.5 / 14.0\%), approaching a floor at the 32B--72B scale. Sockpuppeting bypasses all models (52--89\% ASR). Mechanistically the two attacks hit disjoint points in the computation: sockpuppet flips the refusal representation at every layer, while ablation at the controllability peak leaves that representation (and the first-token refusal-vs-compliance logit preference) nearly unchanged on 11 of 12 models---yet still changes behavior.
 
-We make five contributions:
-\begin{enumerate}
-    \item \textbf{The readability--controllability gap reproduces across 13 models from five families (Gemma-3, Llama-3.1, Qwen2.5, Qwen3, Mistral) and 3B--72B parameters (24$\times$ size range).} Refusal features are most linearly separable in the final 2--3\% of layers ($\sim$0.96--1.00$L$) but most causally controllable much earlier (0.39--0.81$L$), with gaps of \textbf{28--59\% of model depth} (mean 44\%). Logistic probes, layer-wise L2 separation, and dual-level attack sweeps all corroborate the gap, which is tightest on well-aligned large models (Qwen2.5-32B: 28\%) and loosest on smaller or reasoning-trained models (Llama-3.1-8B and DS-R1-Distill-Llama-70B: 59\%).
-    \item \textbf{A mechanistic explanation of the gap.} On 11 of 12 tested models, ablating the refusal direction at the controllability peak leaves two quantities close to baseline at the separability peak: (a) the residual-stream projection onto the late-layer refusal direction (within $\pm$10\%), and (b) the refusal-vs-compliance token-logit preference (within 0.6 units). Sockpuppeting changes both substantially. Gemma-3-27B is the lone exception, showing a 30\% projection drop under ablation---still smaller than sockpuppet's effect. Residual-stream path patching on Llama-3.1-8B, Qwen2.5-7B, and Mistral-Small-24B (Section~\ref{sec:path_patch}) shows the refusal signal is rebuilt distributedly across the final 10--23 layers on every model with no localized relay, consistent with the refusal direction being an \emph{output-adjacent readout}, not a causal bottleneck. This reframes the gap from a ``decision vs.\ format'' split to a representation/behavior decoupling.
-    \item \textbf{Scale and reasoning change the gap.} Within the Qwen2.5 family (same architecture, same safety recipe), ablation-only ASR drops monotonically with scale (3B/7B/14B/32B: 78.5 / 46.0 / 21.5 / 11.5\%), with a floor near 11--14\% at 32B--72B. Safety becomes more non-linearly encoded at larger capacity. Reasoning models (QwQ-32B, DeepSeek-R1-Distill-Llama-70B) invert the sockpuppet effect on refusal-token logits---sockpuppet \emph{increases} the final-layer refusal logit preference---and exhibit a new failure mode, \textbf{chain-of-thought harmful-content leakage}: their thinking block produces detailed harmful reasoning before the final refusal, exposing information that output-level safety masks.
-    \item \textbf{A refined design implication.} The gap decouples intervention from detection: the controllability peak is the right place to \emph{intervene} (ablation has maximal behavioral effect there), while the separability peak is the right place to \emph{detect} (compliance-prediction AUC is within 0.01 of best on 8/9 tested models; GCG-successful prompts show a 39--104-unit drop in sep-peak refusal projection relative to GCG-failed prompts). Single-peak monitoring guidance in prior work conflates two distinct safety functions.
-    \item \textbf{The attack surface is trainable away, but the current recipe is not deployment-ready (honest positive contribution).} LoRA fine-tuning (200 steps, $r$=16) with refusal-direction-ablation counterexamples drives ablation-ASR to 0\% on held-out prompts across all five tested models (Qwen2.5-3B, 7B, 14B, Llama-3.1-8B, Mistral-7B-v0.3). Full dual-judge re-evaluation confirms 0\% COMPLIANCE across all four attack conditions on every adapted model (2000 judged responses). The controllability peak is therefore a property of the alignment recipe, not of the architecture. However, principled utility evaluation on XSTest (dual-judged) shows every adapter over-refuses safe prompts at 85--99\%---including Qwen2.5-14B (which the ad-hoc 100-prompt benchmark misclassified as retaining full utility). The recipe eliminates the attack surface at all scales but requires a benign-preservation component before deployment.
-\end{enumerate}
+We organize the paper around four research questions:
+\rqbox{1}{Where does refusal become most readable, and where is it most controllable?}
+\rqbox{2}{Does this readability--controllability gap persist across model families, scales, and reasoning-trained variants?}
+\rqbox{3}{Why can a mid-layer intervention change behavior while the late refusal readout remains intact?}
+\rqbox{4}{What design rule follows for attacks, monitors, and trainable defenses?}
 
 % =============================================================================
 % RELATED WORK
@@ -268,6 +299,8 @@ Qwen2.5-72B  & 80 & 52.0\% & 14.0\% & 75.5\% & L78 (.99$L$) & L40 (.51$L$) & L40
 
 \paragraph{The Gap is Universal.} Measured by L2 separation, readability peaks in the final 2--4\% of layers across all 13 models (sep peak $\geq 0.96L$ on every model tested), while controllability peaks in the middle 39--81\% of model depth. Raw layer gaps range from 12 layers (Qwen2.5-7B) to 47 layers (DS-R1-Distill-Llama-70B); as a fraction of depth, gaps span 28\% (Qwen2.5-32B) to 59\% (DS-R1-Distill-Llama-70B, Llama-3.1-8B), with a mean of 44\%. Probe accuracy---our second readability metric---often peaks even earlier than L2 separation (as early as 0.20$L$ on Llama-3.1-70B and DS-R1-Distill-Llama-70B), reinforcing that mid-network representations are already linearly decodable before the separation peak emerges.
 
+\takeawaybox{1--2}{Readability peaks late, controllability peaks mid-network, and the separation is not a single-model artifact: it appears across all 13 models with a 28--59\%-of-depth gap.}
+
 \paragraph{A Spectrum of Safety Architectures and a Scaling Law.}
 Ablation vulnerability spans a wide spectrum: very shallow ($\geq$75\%, Qwen2.5-3B, Mistral-7B-v0.3$^\dagger$); shallow (40--60\%, Gemma-3-27B, Qwen2.5-7B, Mistral-Small-24B); moderate (20--40\%, QwQ-32B, Qwen3-8B); deep ($<$20\%, Llama-3.1-8B, Qwen2.5-32B). Within the Qwen2.5 family (same architecture, same safety-tuning recipe), ablation-only ASR drops monotonically and saturates: \textbf{3B $\to$ 78.5\%, 7B $\to$ 46.0\%, 14B $\to$ 21.5\%, 32B $\to$ 11.5\%, 72B $\to$ 14.0\%}. Safety becomes more non-linearly encoded at larger capacity, consistent with Qwen's probe peak moving later (L16 at 7B $\to$ L23 at 14B $\to$ L40 at 72B); at 32B--72B the linear attack approaches a floor near 11--14\%. Sockpuppet remains effective across all models (52.5--89\% ASR); dual attack reaches 78.5--91\%. $^\dagger$Mistral-7B-v0.3 has an 88\% no-attack baseline (weak alignment under our concise-instruction protocol) so we exclude it from scaling comparisons.
 
@@ -287,6 +320,8 @@ Appendix Figure~\ref{fig:decoupling} visualizes the probes at the separability p
 \paragraph{Ablation does not move the readout.}
 On 11 of 12 models, ctrl-peak ablation changes behavior while leaving the late refusal projection nearly unchanged; on five Qwen models the projection even increases. Sockpuppeting, in contrast, flips the late readout on most models. Thus the refusal direction at the separability peak behaves like an output-adjacent readout, not the causal variable that controls refusal. Full interpretation and model-level exceptions are in App.~\ref{app:moved_details}.
 
+\takeawaybox{3}{The late refusal direction is a readout of behavior, not the causal knob: behavior can change before the final-layer refusal projection moves.}
+
 \subsection{Readability vs.\ Controllability}
 \label{sec:layerwise}
 
@@ -305,6 +340,8 @@ Ablation requires white-box access; sockpuppet alone (52.5--89\% ASR) needs only
 
 \paragraph{Generalization, defenses, and a trainable surface.}
 The dual attack reaches 54--88\% ASR on held-out prompts on 10/13 models (App.~\ref{app:disjoint}); the refusal direction beats random unit-vector controls by 3.9--32.7$\times$ (App.~\ref{app:randdir}); and ablation does not corrupt benign generation (App.~\ref{app:utility}). A sep-peak compliance probe transfers across dual, sockpuppet, and GCG-style attacks, while LoRA counterexample training removes the ablation surface but introduces XSTest over-refusal (App.~\ref{app:defense}, \ref{app:advtrain}). We therefore view the gap as both a vulnerability and a trainable diagnostic surface.
+
+\takeawaybox{4}{Use different layers for different safety functions: intervene at the ctrl peak, monitor at the sep peak, and train against ctrl-peak counterexamples with an explicit benign-preservation loss.}
 
 \paragraph{Reasoning-model failure modes.}
 QwQ-32B and DS-R1-Distill-Llama-70B leak harmful content inside their \texttt{<think>} block before the final refusal, an axis orthogonal to the readability--controllability gap (App.~\ref{app:cotleak}). Output-level safety is therefore incomplete for reasoning models.
