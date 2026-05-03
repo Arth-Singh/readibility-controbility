@@ -282,20 +282,10 @@ At every layer $\ell$, we compute the dot product $p_\ell = \mathbf{h}_\ell \cdo
 \paragraph{Probe 2 — Logit lens.}
 At every layer $\ell$, we apply the model's final RMSNorm and unembedding matrix to $\mathbf{h}_\ell$, computing the logit for refusal-initial tokens (``I'', ``Sorry'', ``Unable'', \dots) minus the logit for compliance-initial tokens (``Sure'', ``Here'', ``Certainly'', \dots). This directly measures the model's token-level refusal preference that would be expressed if generation stopped at layer $\ell$.
 
-Figure~\ref{fig:decoupling} shows both probes at the separability peak; raw numbers are in App.~\ref{app:mech_raw}.
-
-\begin{figure*}[t]
-    \centering
-    \includegraphics[width=0.92\textwidth]{figures/generated_pdf/fig_mechanistic_decoupling_banana_upscaled.pdf}
-    \caption{Mechanistic decoupling (12 models, 4 conditions). \textbf{Top:} residual-stream refusal projection at the sep peak, baseline-normalized. \textbf{Bottom:} refusal-minus-compliance last-layer logit (logit lens), same normalization. The \emph{ablation} row stays $\sim$+1.0 (no movement); the \emph{sockpuppet} row flips negative or to zero. Ablation at the ctrl peak changes behavior without moving the late-layer refusal readout.}
-    \label{fig:decoupling}
-\end{figure*}
+Appendix Figure~\ref{fig:decoupling} visualizes the probes at the separability peak; raw numbers are in App.~\ref{app:mech_raw}.
 
 \paragraph{Ablation does not move the readout.}
-On 11 of 12 models the ablation column differs from the no-attack column by less than 10\% on $p_{\text{sep}}$ and less than 0.6 on $\Delta$logit. On five Qwen models the projection even \emph{increases} under ablation (the signal rebuilds and overshoots). Gemma-3-27B is the only model showing a meaningful projection reduction (30\%), still smaller than the effect of sockpuppeting. Yet the behavioral ASR under ablation-only ranges from 11.5\% (Qwen2.5-32B) to 89.5\% (Qwen2.5-3B)---a 78-point spread \emph{driven by an intervention that does not change either the refusal projection at the readability peak or the first-token logit preference}. Sockpuppeting, in contrast, flips both on most models.
-
-\paragraph{Interpretation: the refusal direction is a readout.}
-The combined evidence reframes the gap. The ``refusal direction'' measured at the separability peak captures an \emph{output-adjacent readout}: the residual stream at the last layer is shaped so that the unembedding matrix projects refusal-token logits high. Ablation at the controllability peak changes behavior through orthogonal circuit modifications (likely attention patterns and OV-circuit writes that do not lie on the linear refusal axis) but the residual stream is rebuilt by subsequent layers into a representation that, when unembedded, still reads as refusal. This explains two phenomena the original ``decision vs.\ format'' hypothesis left unresolved: (a) why the late-layer refusal signal \emph{rises} after mid-layer ablation on Qwen models, and (b) why intervening at the readability peak is strictly worse for all behavioral effects.
+On 11 of 12 models, ctrl-peak ablation changes behavior while leaving the late refusal projection nearly unchanged; on five Qwen models the projection even increases. Sockpuppeting, in contrast, flips the late readout on most models. Thus the refusal direction at the separability peak behaves like an output-adjacent readout, not the causal variable that controls refusal. Full interpretation and model-level exceptions are in App.~\ref{app:moved_details}.
 
 \subsection{Readability vs.\ Controllability}
 \label{sec:layerwise}
@@ -314,10 +304,10 @@ This section directly tests the gap by measuring readability and controllability
 Ablation requires white-box access; sockpuppet alone (52.5--89\% ASR) needs only API-level assistant prefilling. Llama-3.1-8B and Mistral-7B-v0.3 share $L=32$, $d=4096$ yet differ by 77 pts in ablation-ASR, so alignment procedure dominates geometry. Qwen3-8B's non-reasoning \textit{comply-then-refuse} pattern motivates defenses that score the whole assistant turn, not just the prompt.
 
 \paragraph{Generalization, defenses, and a trainable surface.}
-The dual attack reaches 54--88\% ASR on held-out prompts on 10/13 models (App.~\ref{app:disjoint}); the refusal direction yields 3.9--32.7$\times$ higher ASR than 15 random unit-vector controls per model (App.~\ref{app:randdir}); ablation does not corrupt benign generation (App.~\ref{app:utility}). A linear compliance-prediction probe achieves best-AUC at the sep peak on 8/9 models with ctrl-peak AUC 1--27 pts lower (App.~\ref{app:defense}), and the same probe transfers to GCG~\citep{zou2023universal} with 39--104-unit margins (App.~\ref{app:gcg}); versus Llama Guard 3 (bypassed by assistant prefill) and Circuit Breakers \citep{zou2024circuit} (output corruption with $\sim$83--90\% incoherent), it is the cheapest cross-attack monitor (App.~\ref{app:defbase}). Path patching shows the rebuild is distributed: recovery climbs smoothly across three families with no localized relay (App.~\ref{app:pathpatch}). LoRA fine-tuning (200 steps, $r$=16) with ablation counterexamples drives ablation-ASR to 0\% on held-out prompts across five models (2000-response dual-judge re-evaluation, App.~\ref{app:advtrain}); but the same adapters over-refuse XSTest-safe at 85--99\% \citep{rottger2024xstest}, so the recipe needs a benign-preservation component before deployment.
+The dual attack reaches 54--88\% ASR on held-out prompts on 10/13 models (App.~\ref{app:disjoint}); the refusal direction beats random unit-vector controls by 3.9--32.7$\times$ (App.~\ref{app:randdir}); and ablation does not corrupt benign generation (App.~\ref{app:utility}). A sep-peak compliance probe transfers across dual, sockpuppet, and GCG-style attacks, while LoRA counterexample training removes the ablation surface but introduces XSTest over-refusal (App.~\ref{app:defense}, \ref{app:advtrain}). We therefore view the gap as both a vulnerability and a trainable diagnostic surface.
 
 \paragraph{Reasoning-model failure modes.}
-QwQ-32B and DS-R1-Distill-Llama-70B leak harmful content inside their \texttt{<think>} block before the final refusal---\textbf{chain-of-thought leakage}, orthogonal to the gap (App.~\ref{app:cotleak}). On QwQ-32B sockpuppeting \emph{increases} the final-layer refusal preference yet produces harmful reasoning earlier in the trace; output-level safety is incomplete for these models. Judge sensitivity is documented in App.~\ref{app:judges}.
+QwQ-32B and DS-R1-Distill-Llama-70B leak harmful content inside their \texttt{<think>} block before the final refusal, an axis orthogonal to the readability--controllability gap (App.~\ref{app:cotleak}). Output-level safety is therefore incomplete for reasoning models.
 
 \par\medskip
 \noindent\colorbox{gapshade}{%
@@ -332,7 +322,7 @@ QwQ-32B and DS-R1-Distill-Llama-70B leak harmful content inside their \texttt{<t
 A 28--59\%-of-depth gap separates where safety is \emph{readable} from where it is \emph{breakable}: the rebuild is distributed, the surface is alignment-recipe-dependent (LoRA $\to$ 0\% ablation-ASR; App.~\ref{app:advtrain}), and reasoning models add an orthogonal CoT-leakage axis.
 
 \section*{Limitations}
-\textbf{Coverage:} Llama-3.3-70B, Mistral-Large-123B inaccessible; Gemma-4-31B swept but unjudged. \textbf{Judges:} Opus 4.6 + Sonnet 4.6 ($>$94\% agreement); human eval is future work. \textbf{Confounds:} Mistral-7B-v0.3 (88\% baseline), DS-R1-Distill-Llama-70B (85\%) excluded from aggregates; Gemma-3-27B ablation degenerates at early layers (logit soft-cap), so we report the L37--L60 gap. \textbf{Utility:} 0\% COMPLIANCE verified (App.~\ref{app:advtrain}) but the recipe over-refuses XSTest-safe at 85--99\%; benign-preservation loss + OR-Bench~\citep{cui2024orbench} / HarmBench~\citep{mazeika2024harmbench} eval is next.
+\textbf{Coverage:} Llama-3.3-70B and Mistral-Large-123B were inaccessible; Gemma-4-31B was swept but unjudged. \textbf{Judges:} Opus 4.6 + Sonnet 4.6 agree above 94\%; human evaluation is future work. \textbf{Utility:} LoRA counterexample training removes ablation-ASR but over-refuses XSTest-safe, so benign-preservation remains open.
 
 \section*{Ethical Considerations}
 This work studies safety vulnerabilities to inform defensive research; we omit operational details that would enable misuse. All experiments used locally-hosted open-weight models.
@@ -369,7 +359,8 @@ All settings specified. Same 100 prompt pairs across all models. Code released u
 \textbf{J} & Chain-of-Thought Leakage in Reasoning Models \dotfill & \pageref{app:cotleak} \\
 \textbf{K} & Judge Sensitivity \dotfill & \pageref{app:judges} \\
 \textbf{L} & Mechanistic Probes (Raw Numbers) \dotfill & \pageref{app:mech_raw} \\
-\textbf{M} & Additional Generated Concept Figures \dotfill & \pageref{app:generated_figures} \\
+\textbf{M} & Additional Main-Text Details \dotfill & \pageref{app:moved_details} \\
+\textbf{N} & Additional Generated Concept Figures \dotfill & \pageref{app:generated_figures} \\
 \end{tabular*}
 \vspace{1.5em}
 
@@ -742,9 +733,29 @@ Llama-3.1-70B & +62.7 & +16.9 & \textbf{+59.9} & +16.0 & +6.86 & +3.99 & \textbf
 \end{table}
 
 \clearpage
+\section{Additional Main-Text Details}
+\label{app:moved_details}
+
+\paragraph{Mechanistic interpretation.}
+On 11 of 12 models the ablation column differs from the no-attack column by less than 10\% on $p_{\text{sep}}$ and less than 0.6 on $\Delta$logit. On five Qwen models the projection even \emph{increases} under ablation (the signal rebuilds and overshoots). Gemma-3-27B is the only model showing a meaningful projection reduction (30\%), still smaller than the effect of sockpuppeting. Yet the behavioral ASR under ablation-only ranges from 11.5\% (Qwen2.5-32B) to 89.5\% (Qwen2.5-3B)---a 78-point spread driven by an intervention that does not change either the refusal projection at the readability peak or the first-token logit preference. Sockpuppeting, in contrast, flips both on most models.
+
+The combined evidence reframes the gap. The ``refusal direction'' measured at the separability peak captures an output-adjacent readout: the residual stream at the last layer is shaped so that the unembedding matrix projects refusal-token logits high. Ablation at the controllability peak changes behavior through orthogonal circuit modifications (likely attention patterns and OV-circuit writes that do not lie on the linear refusal axis) but the residual stream is rebuilt by subsequent layers into a representation that, when unembedded, still reads as refusal. This explains why the late-layer refusal signal rises after mid-layer ablation on Qwen models, and why intervening at the readability peak is strictly worse for behavioral effects.
+
+\paragraph{Defense and training details.}
+A linear compliance-prediction probe achieves best-AUC at the sep peak on 8/9 models with ctrl-peak AUC 1--27 pts lower (App.~\ref{app:defense}), and the same probe transfers to GCG~\citep{zou2023universal} with 39--104-unit margins (App.~\ref{app:gcg}). Compared with Llama Guard 3, which is bypassed by assistant prefill, and Circuit Breakers~\citep{zou2024circuit}, which produces $\sim$83--90\% incoherent outputs, the sep-peak probe is the cheapest cross-attack monitor (App.~\ref{app:defbase}). Path patching shows the rebuild is distributed: recovery climbs smoothly across three families with no localized relay (App.~\ref{app:pathpatch}). LoRA fine-tuning (200 steps, $r$=16) with ablation counterexamples drives ablation-ASR to 0\% on held-out prompts across five models (2000-response dual-judge re-evaluation, App.~\ref{app:advtrain}); however, those same adapters over-refuse XSTest-safe at 85--99\%~\citep{rottger2024xstest}, so the recipe needs a benign-preservation component before deployment.
+
+\clearpage
 \section{Additional Generated Concept Figures}
 \label{app:generated_figures}
 
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/generated_pdf/fig_mechanistic_decoupling_banana_upscaled.pdf}
+    \caption{Mechanistic decoupling (12 models, 4 conditions). \textbf{Top:} residual-stream refusal projection at the sep peak, baseline-normalized. \textbf{Bottom:} refusal-minus-compliance last-layer logit (logit lens), same normalization. The \emph{ablation} row stays $\sim$+1.0 (no movement); the \emph{sockpuppet} row flips negative or to zero. Ablation at the ctrl peak changes behavior without moving the late-layer refusal readout.}
+    \label{fig:decoupling}
+\end{figure}
+
+\clearpage
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{figures/generated_pdf/fig_detect_intervene_banana_upscaled.pdf}
