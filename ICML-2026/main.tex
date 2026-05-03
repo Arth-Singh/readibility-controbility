@@ -229,7 +229,7 @@ This section tests our central claim: the readability--controllability gap is a 
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=0.8\textwidth]{figures/fig1_gap_stack.png}
+    \includegraphics[width=0.92\textwidth]{figures/generated_pdf/fig1_gap_banana_upscaled.pdf}
     \caption{\textbf{The readability--controllability gap.} A linear probe trained on the final-layer residual stream reads refusal with near-perfect accuracy (\emph{separability peak}, top band). An intervention that changes behaviour is most effective 30--60 layers earlier (\emph{controllability peak}, middle band). The two peaks are separated by 28--59\% of model depth across the 13 models we study (Table~\ref{tab:main_multi}); detection and intervention therefore target different layers of the same network.}
     \label{fig:gap}
 \end{figure*}
@@ -286,7 +286,7 @@ Figure~\ref{fig:decoupling} shows both probes at the separability peak; raw numb
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=0.78\textwidth]{figures/figG_decoupling.pdf}
+    \includegraphics[width=0.92\textwidth]{figures/generated_pdf/fig_mechanistic_decoupling_banana_upscaled.pdf}
     \caption{Mechanistic decoupling (12 models, 4 conditions). \textbf{Top:} residual-stream refusal projection at the sep peak, baseline-normalized. \textbf{Bottom:} refusal-minus-compliance last-layer logit (logit lens), same normalization. The \emph{ablation} row stays $\sim$+1.0 (no movement); the \emph{sockpuppet} row flips negative or to zero. Ablation at the ctrl peak changes behavior without moving the late-layer refusal readout.}
     \label{fig:decoupling}
 \end{figure*}
@@ -368,6 +368,7 @@ All settings specified. Same 100 prompt pairs across all models. Code released u
 \textbf{J} & Chain-of-Thought Leakage in Reasoning Models \dotfill & \pageref{app:cotleak} \\
 \textbf{K} & Judge Sensitivity \dotfill & \pageref{app:judges} \\
 \textbf{L} & Mechanistic Probes (Raw Numbers) \dotfill & \pageref{app:mech_raw} \\
+\textbf{M} & Additional Generated Concept Figures \dotfill & \pageref{app:generated_figures} \\
 \end{tabular*}
 \vspace{1.5em}
 
@@ -738,5 +739,32 @@ Llama-3.1-70B & +62.7 & +16.9 & \textbf{+59.9} & +16.0 & +6.86 & +3.99 & \textbf
 \caption{Mechanistic probes at the separability peak (raw numbers behind Fig.~\ref{fig:decoupling}).}
 \label{tab:mech}
 \end{table}
+
+\clearpage
+\section{Additional Generated Concept Figures}
+\label{app:generated_figures}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/generated_pdf/fig_detect_intervene_banana_upscaled.pdf}
+    \caption{Detection and intervention use different layers: late-layer readout for monitoring, mid-layer hook for behavior control.}
+    \label{fig:generated_detect_intervene}
+\end{figure}
+
+\clearpage
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/generated_pdf/fig_attack_composition_banana_upscaled.pdf}
+    \caption{Dual-level attack composition: a decoding-level assistant-prefix attack combined with a representation-level ablation hook.}
+    \label{fig:generated_attack_composition}
+\end{figure}
+
+\clearpage
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{figures/generated_pdf/fig_defense_takeaway_banana_upscaled.pdf}
+    \caption{Layered defense takeaway: intervene earlier, detect later, and retain an output-level judge for trace-aware response checks.}
+    \label{fig:generated_defense_takeaway}
+\end{figure}
 
 \end{document}
